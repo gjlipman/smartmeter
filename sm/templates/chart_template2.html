@@ -1,0 +1,43 @@
+
+
+        <P>{navbar}</P>
+        <P>{description}</P>
+        <canvas id="myChart1"></canvas>
+        <BR>
+        {table}
+    </div>
+  
+    <script>
+        var labels = {chartlabels}; 
+        var quantity = {quantity}; 
+        var ctx = document.getElementById('myChart1').getContext('2d');
+        var chart = new Chart(ctx, {
+            // The type of chart we want to create
+            type: 'bar',
+        
+            // The data for our dataset
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Domestic Profile',
+                    backgroundColor: 'hsl(0,100%,50%)',
+                    fill: false,
+                    data: profile,
+                },
+                {
+                    label: 'Your Profile',
+                    backgroundColor: 'hsl(240, 100%, 50%)',
+                    fill: false,
+                    data: actual,
+                }
+                ]
+
+            },
+            // Configuration options go here
+            options: {
+                animation: {duration: 0 },
+                legend: {display: true},}
+          
+        });
+    </script>
+

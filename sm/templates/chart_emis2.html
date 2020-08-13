@@ -1,0 +1,77 @@
+
+
+        <P>{navbar}</P>
+        <P>{description}</P>
+        <canvas id="myChart1"></canvas>
+        <BR>
+        {table}
+    </div>
+  
+    <script>
+        var labels = {chartlabels}; 
+        var profile = {profile}; 
+        var actual = {actual};
+        var intensity = {intensity};
+        var ctx = document.getElementById('myChart1').getContext('2d');
+        var chart = new Chart(ctx, {
+            // The type of chart we want to create
+            type: 'line',
+        
+            // The data for our dataset
+            data: {
+                labels: labels,
+                datasets: [
+                 {
+                    label: 'Intensity (lhs)',
+                    backgroundColor: 'hsl(0,100%,0%)',
+                    borderColor: 'hsl(0,100%,0%)',
+                    fill: false,
+                    data: intensity,
+                    yAxisID: 'A'
+                }, 
+                    
+                    {
+                    label: 'Domestic Profile (rhs)',
+                    backgroundColor: 'hsl(0,100%,50%)',
+                    borderColor: 'hsl(0,100%,50%)',
+                    fill: false,
+                    data: profile,
+                    yAxisID: 'B'
+                },
+                {
+                    label: 'Your Profile (rhs)',
+                    backgroundColor: 'hsl(240, 100%, 50%)',
+                    borderColor: 'hsl(240, 100%, 50%)',
+                    fill: false,
+                    data: actual,
+                    yAxisID: 'B'
+                },
+
+
+
+                ]
+
+            },
+            // Configuration options go here
+            options: {
+                animation: {duration: 0 },
+                legend: {display: true},
+                scales: {
+                            yAxes: [{
+                                id: 'A',
+                                scaleLabel: { display: true, labelString: 'Carbon Intensity (g/kwh)'},
+                                type: 'linear',
+                                position: 'left',
+                            }, {
+                                id: 'B',
+                                scaleLabel: { display: true, labelString: 'Consumption (kwh)'},
+                                type: 'linear',
+                                position: 'right',
+                            }]
+                        }
+                
+                }
+          
+        });
+    </script>
+

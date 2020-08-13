@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Current Forecast</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.8.0"></script>
+<style>
+    body {
+        width: 1000px;
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+        background: #AAAAAA;
+    }
+    div {
+      padding: 30px;
+      background: #FFFFFF;
+      margin: 30px;
+      border-radius: 5px;
+      border: 1px solid #888888;
+    }
+    pre {
+      padding: 15px;
+    }
+    code, pre {
+      font-size: 16px;
+      background: #DDDDDD
+    }
+</style>
+
+</head>
+<body>
+  <div>
+    <h1>Electricity Price Forecast as at {asof}</h1>
+    <P>This webpage displays some rough forecasts of hourly electricty prices for the next week, based on expected demand, wind and solar generation. I have also included the day ahead half-hourly prices (averaged to hourly) once these are known and have been imported.</P>
+    <P>{retail}</P>
+    <P>It should be noted that future wind generation and resulting prices are likely to be significantly different than those forecast.</P>
+    <P>I have described the methodology used in a bit more detail in <A HREF="https://medium.com/@guylipman/forecasting-uelectricity-prices-3276f893590f" target="_blank">this blog post</A>.</P>
+    <H2>{retail2}</H2>
+    <canvas id="myChart1"></canvas>
+    <H2>Forecasts of gross demand, wind and solar generation, and resultant net demand</H2>
+    <canvas id="myChart2"></canvas>
+    <table id="forecast"></table>
+  </div>
+  
+  <script>
+  var labels = {datetimes}; 
+  var prices = {prices}; 
+  var actual = {actual};
+  var demand = {demand};
+  var wind =  {wind}; 
+  var solar = {solar};
+  var netdemand = [];
+  var axislabels = [];
+  for (i=0; i<demand.length; i++) {
+      netdemand.push(demand[i]-wind[i]-solar[i]); 
+      }
+  for (i=0; i<demand.length; i=i+6) {
+      axislabels.push(labels[i]);
+  }
+
+  var ctx = document.getElementById('myChart1').getContext('2d');
+  var chart = new Chart(ctx, {
+      // The type of chart we want to create
+      type: 'line',
+  
+      // The data for our dataset
+      data: {
+          labels: labels,
+          datasets: [{
+              label: 'Forecast',
+              borderColor: 'hsl(0,100%,0%)',
+              fill: false,
+              data: prices,
+          },
+          {   label: 'Actual',
+              borderColor: 'hsl(0, 100%, 50%)',
+              fill: false,
+              data: actual}
+          ]
+      },
+  
+      // Configuration options go here
+            options: {
+                animation: {duration: 0 },
+                scales: {yAxes: [
+                          {type: 'linear', ticks: {suggestedMin: 0} }
+                          ]},
+                }
+    
+  });
+
+  var ctx = document.getElementById('myChart2').getContext('2d');
+  var chart = new Chart(ctx, {
+      // The type of chart we want to create
+      type: 'line',
+  
+      // The data for our dataset
+      data: {
+          labels: labels,
+          datasets: [
+          {
+             label: 'Net Demand',
+             borderColor: 'hsl(0,100%,0%)',
+             fill: false,
+             data: netdemand,
+          },
+            {
+              label: 'Demand',
+              borderColor: 'hsl(0,100%,50%)',
+              fill: false,
+              data: demand
+          },
+          {
+             label: 'Wind',
+             borderColor: 'hsl(240, 100%, 50%)',
+             fill: false,
+             data: wind
+          },
+          {
+             label: 'Solar',
+             borderColor: 'hsl(60,100%,50%)',
+             fill: false,
+             data: solar
+          },
+          ]
+      },
+  
+      // Configuration options go here
+      options: {}
+  });
+  
+  s = "<TR></TR><TH>DateTime</TH><TH>Demand</TH><TH>Wind</TH><TH>Solar</TH><TH>Net Demand</TH><TH>Price</TH><TH>Actual Price</TH></TR>";
+  for (i=0; i<demand.length; i++) {
+    s += '<TR><TD>' + labels[i] + '</TD><TD>' + demand[i] + '</TD><TD>' + wind[i];
+    s+= '</TD><TD>' + solar[i] + '</TD><TD>' + (netdemand[i]).toFixed(2) + '</TD><TD>' + prices[i] + '</TD>'
+    if (i<actual.length) {
+      s+= '<TD>' + actual[i] + '</TD></TR>';
+    }
+    else {
+      s += '<TD></TD></TR>';
+    }
+  }
+  s += '</TABLE>';
+  document.getElementById('forecast').innerHTML = s; 
+  </script>
+
+
+</body>
+</html>
