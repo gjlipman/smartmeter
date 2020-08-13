@@ -956,44 +956,9 @@ if False: #Clean out old account data
     loadDataFromDb(s)
     print(loadDataFromDb('select count(id) from sm_quantity;'))
 
-if False:
-
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-
-    message = Mail(
-        from_email='contact@guylipman.com',
-        to_emails='gjlipman@yahoo.com',
-        subject='Sending with SendGrid',
-        html_content='<strong>and easy to do anywhere, even with Python</strong>')
-    try:
-        sg = SendGridAPIClient('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')
-        response = sg.send(message)
-        print('sent')
-    except Exception as e:
-        print(e.message)
 
 
-if False:
-    import smtplib
 
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.image import MIMEImage
-    from email.header import Header
-
-    smtp = smtplib.SMTP()
-    smtp.connect('localhost')
-
-    msgRoot = MIMEMultipart("alternative")
-    msgRoot['Subject'] = Header("Subject subject", "utf-8")
-    msgRoot['From'] = "guy.j.lipman@gmail.com"
-    msgRoot['To'] = "gjlipman@yahoo.com"
-    text = MIMEText('asdf', "plain", "utf-8")
-    msgRoot.attach(text)
-    html = MIMEText('asdfasf', "html", "utf-8")
-    msgRoot.attach(html)
-    smtp.sendmail("guy.j.lipman@gmail.com", "gjlipman@yahoo.com", msgRoot.as_string())
 
 conn.close()
 
