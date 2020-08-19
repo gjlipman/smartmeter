@@ -1,6 +1,5 @@
 This document details the file structure of this Smart Meter Data Viewer Project
-
-
+```
 manage.py
 django_project/
     settings.py
@@ -44,7 +43,7 @@ scripts/
 docs/
     database.md
     filestructure.md
-
+```
 
     
 
