@@ -39,7 +39,7 @@ try:
     group by s.var_id, s.product, s.region;
     """
     data = loadDataFromDb(s)[0]
-    latest = data[3]
+    latest = data[4]
     var_id = data[0]
 
     idx = pd.date_range(START, '202101010000', freq='30T')  
@@ -131,7 +131,7 @@ try:
     select sm_variables.var_id, product, region, max(sm_periods.period_id) as period_id, max(period) as period 
     from sm_variables
     inner join sm_hh_variable_vals on sm_variables.var_id=sm_hh_variable_vals.var_id and sm_variables.granularity_id=0 
-    and sm_variabels.region_id!='Z'
+    and sm_variables.region!='Z'
     inner join sm_periods on sm_periods.period_id=sm_hh_variable_vals.period_id
     group by sm_variables.var_id, product, region;
     """

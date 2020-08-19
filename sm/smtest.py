@@ -511,7 +511,7 @@ def checksPage(request):
         select t.var_id, t.product, t.region, min(v.period_id) min, max(v.period_id) max from sm_variables t
         left outer join sm_hh_variable_vals v on t.var_id=v.var_id 
         where t.granularity_id=0
-        group by t.product, t.region t.var_id order by product, region)
+        group by t.product, t.region, t.var_id order by product, region)
 
         select hhvars.var_id, hhvars.product, hhvars.region, pmin.period min, pmax.period max from hhvars 
         inner join sm_periods pmin on pmin.period_id=hhvars.min
