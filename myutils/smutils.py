@@ -585,7 +585,7 @@ def sidebarhtml(request):
                     s1 += '<a class="nav-link bg-light" href="{}" >&nbsp;&nbsp;&nbsp;&nbsp;{}</a>'.format(url.replace(current, x[0], 1), x[1])
             s += s1 + '</div>'
 
-    for item in [('admin', 'Admin'), ('getstarting', 'Getting Started'), ('info', 'More Info')]:
+    for item in [('admin', 'Admin'), ('getstarting', 'Getting Started'), ('other', 'Other Links')]:
         if current == item[0]:
             s1 = """
                 <a class="nav-link  active big bg-light" >{commodlabel}</a>

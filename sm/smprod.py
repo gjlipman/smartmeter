@@ -36,7 +36,7 @@ def checkRequest(request):
             u = adj_url(url, [], [('tariff', '15')])
             return redirect(u)
 
-    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker']:
+    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'other']:
         return choice
 
     type_id, type_label = get_type_id(choice)   
@@ -51,27 +51,6 @@ def checkRequest(request):
         account_id = loadDataFromDb(s)
     else:
         account_id = []
-
-    if len(account_id)==0:
-        adminurl = url.replace(choice, 'admin', 1)
-        heading = 'No {} data stored for this user'.format(type_label)
-        if type_id==0:
-            if isdemo(request):
-                content = """
-                <P>There is no {} data stored for the demo account. Please try back later, or you can load your own data via the <A HREF="{}">Admin Page</A>, for which you will need your Octopus or n3rgy key.</P>"""
-            else:
-                content = """
-                <P>There is no {} data stored for you. Please visit the <A HREF="{}">Admin Page</A> to check what data is stored, and load additional data. Alternatively, remove the Octopus or n3rgy key from the url to access the demo account data.</P>"""          
-        else:
-            if isdemo(request):
-                content = """
-                <P>There is no {} data stored for the demo account, only Electricity. Alternatively you can load your own data via the <A HREF="{}">Admin Page</A>, for which you will need your Octopus or n3rgy key.</P>"""
-            else:
-                content = """
-                <P>There is no {} data stored for you. Please visit the <A HREF="{}">Admin Page</A> to check what data is stored, and load additional data. </P>"""          
-              
-        content = content.format(type_label, adminurl) 
-        return create_sm_page(request, content, heading)
 
     if choice in ['cost','gascost','exportrevenue']:
         prefix = ['', 'gas', 'export'][type_id]
@@ -106,8 +85,28 @@ def homepagewhatwehave(request, df):
     return s
 
 
-
-
+def otherPage(request):
+    url = request.get_full_path()
+    s = f"""
+    <P>The following are links to pages on this site:
+    <UL>
+    <LI><A HREF="{url.replace('other', 'info')}">More Information about this site</A></LI>
+    <LI><A HREF="{url.replace('other', 'gastracker')}">Octopus Gas Tracker Prices</A></LI>
+    <LI><A HREF="{url.replace('other','logpage')}">Log Page</A></LI>
+    <LI><A HREF="{url.replace('other','checks')}">Market Data Checks</A></LI>
+    </UL></P>
+    <P>The following are links to other pages that you might find useful:
+    <UL>
+    <LI><A HREF="https://medium.com/@guylipman/accessing-your-octopus-smart-meter-data-3f3905ca8fec" target="_blank">
+    A blog post about this site, aimed at Octopus customers</A></LI>
+    <LI><A HREF="https://medium.com/@guylipman/a-website-for-viewing-your-smart-meter-data-4d4c84b2bc33" target="blank">
+    A blog post about this site, aimed at industry people</A></LI>
+    <LI><A HREF="https://www.guylipman.com/octopus/api_guide.html" target="_blank">My guide to the Octopus API</A></LI>
+    <LI><A HREF="https://www.guylipman.com/octopus/" target="_blank">Various tools that I have written for Octopus customers</A></LI>
+    </UL>
+    """
+    output = create_sm_page(request, s, 'Other Links')
+    return output
 
 def homepage(request):
     urladmin = request.get_full_path().replace('home','admin',1)
@@ -443,6 +442,9 @@ def adminPage(request):
                             that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
                             other information that could be used to identify you. Your data will be deleted automatically within 7 days of you last 
                             loading data, and you can delete it manually at any time on this page.
+                            <P>If you are a SMETS2 customer, you may find that loading your data using the button below leads to all
+                            volumes being out by half an hour. If you find this, you may need to add a parameter to the url &n3adj=1 to correct
+                            for this. I am working with n3rgy to correct for this.</P>
                             <P>Note that at the moment each of these buttons will take about 10 seconds to load in the data. I will be working on optimising 
                             this over the coming days. </P>
                             <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''

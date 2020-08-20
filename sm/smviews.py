@@ -6,7 +6,7 @@ import pandas as pd
 
 from myutils.smutils import sm_log
 from .smprod import (adminPage, homepage, moreinfo,
-                             checkRequest, gettingStartedPage, getmode)
+                             checkRequest, gettingStartedPage, getmode, otherPage)
 from .smcharts import (consumptionPage, costPage, emissionsPage)
 from .smtest import (get_savecsvPage, billsPage, checksPage, logPage, gastrackerpage, tariffcomparison, analysisPage)
 
@@ -40,10 +40,38 @@ def inner(request, choice):
         output = emissionsPage(request)
     elif choice in ['analysis']:
         output = analysisPage(request)
+    elif choice in ['other']:
+        output = otherPage(request)
     else:      
         raise Exception('Invalid Choice not picked up earlier')
     return output
 
+def home(request):
+    url = request.get_full_path().split('?')
+    url[0] = url[0] + 'home' 
+    url = '?'.join(url)
+    return redirect(url)
+
+def runsql(request):
+    try:
+        if 'password' not in request.POST:
+            return HttpResponse('Missing Password')
+        password = request.POST.get('password')
+        from myutils.keys import READONLY_USERS 
+        from myutils.utils import queryreadonly
+        if password not in READONLY_USERS:
+            return HttpResponse('Password not authorised - please contact Guy Lipman')
+        if 'sqlquery' not in request.POST:
+            return HttpResponse('Missing sqlquery')
+        output = queryreadonly(request.POST.get('sqlquery'))
+        if len(output)>100000:
+            return HttpResponse('Too much data to return')
+        return HttpResponse(output)
+    except Exception as err:    
+        import traceback
+        errstr = str(err) + '<BR>'
+        errstr += '<BR>'.join([x for x in traceback.format_exc().splitlines()])
+        return HttpResponse(errstr)
 
 def index(request, choice):
     try:

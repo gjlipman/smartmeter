@@ -25,5 +25,7 @@ urlpatterns = [
     path('', view.index, name='index'),
     url(r'forecasts/*', forecastviews.index, name='forecasts'),
     url(r'covidstats/*', covidstatsviews.index, name='covidstats'),
-    path('sm/<slug:choice>', smviews.index, name='sm')
+    path('sm/<slug:choice>', smviews.index, name='sm'),
+    path('sm/', smviews.home, name='smhome'),
+    path('smsql/', smviews.runsql, name='smsql')
 ]

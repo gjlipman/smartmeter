@@ -167,9 +167,9 @@ def billsPage(request, choice):
     heading = '{} Bill Calculator'.format(type_label)
     prefix = ['', 'gas', 'export'][type_id]
     tariff = request.GET.get(f'{prefix}tariff', '0.0')
+    standingcharge = request.GET.get(f'{prefix}sc','0.0')
     price = None
     region = request.GET.get('region', None)
-    standingcharge = 0.0
     gasmult = request.GET.get('gasmult','1.0')
     start = '2020/07/01'
     end = '2020/07/31'
@@ -701,16 +701,18 @@ def logPage(request):
         url = request.get_full_path()
         heading = 'Log Data'
         today = datetime.datetime.today().strftime('%Y/%m/%d')
-
-        s = f"""
-            <P>
-            Testing
-            </P> 
-            <form action="{url}" method="post">
-                <input type="text" name="date" value="{today}">
-                <input type="submit" value="Save to CSV">
-            </form><BR><BR>
-            """
+        from myutils.keys import ADVANCED_KEY
+        s = ''
+        if ADVANCED_KEY in request.GET:
+            s += f"""
+                <P>
+                Testing
+                </P> 
+                <form action="{url}" method="post">
+                    <input type="text" name="date" value="{today}">
+                    <input type="submit" value="Save to CSV">
+                </form><BR><BR>
+                """
 
         s += df1.to_html(index=False, float_format='%.0f') + '<BR>'
         s += df2.to_html(float_format='%.0f') + '<BR>'
