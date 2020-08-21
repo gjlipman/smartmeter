@@ -383,7 +383,7 @@ def loadSmData(request, type_id):
     if ('n3rgy' in request.GET):
         key = request.GET.get('n3rgy')
         region = None
-        n3adj = int(request.GET.get('n3adj','0'))
+        n3adj = int(request.GET.get('n3adj','1'))
         df = getDataFromN3RGY(key, type_id, n3adj)
         source_id=0
     elif 'octopus' in request.GET:

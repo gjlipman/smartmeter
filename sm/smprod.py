@@ -47,10 +47,16 @@ def checkRequest(request):
         return create_sm_page(request, content, 'Invalid Page')
 
     if smid is not None:
-        s = f"select account_id from sm_accounts where session_id= '{smid}' and type_id={type_id} and active='1'"
+        s = f"select account_id from sm_accounts where session_id= '{smid}' and active='1'"
         account_id = loadDataFromDb(s)
     else:
         account_id = []
+    if len(account_id)==0:    
+        adminurl = url.replace(choice, 'admin', 1)
+        heading = 'No data stored for this user'
+        content = f"""
+                <P>There is no data currently stored for you. Please visit the <A HREF="{adminurl}">Admin Page</A> to reload data. </P>"""          
+        return create_sm_page(request, content, heading)
 
     if choice in ['cost','gascost','exportrevenue']:
         prefix = ['', 'gas', 'export'][type_id]
@@ -406,7 +412,7 @@ def adminPage(request):
   
         if source == 'n3rgy':
             key = request.GET.get('n3rgy')
-            n3adj = int(request.GET.get('n3adj','0'))
+            n3adj = int(request.GET.get('n3adj','1'))
             ndata = n3rgymeters(key, n3adj)
             
             s += '<H4>Data Available from n3rgy</H4>'
@@ -442,9 +448,6 @@ def adminPage(request):
                             that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
                             other information that could be used to identify you. Your data will be deleted automatically within 7 days of you last 
                             loading data, and you can delete it manually at any time on this page.
-                            <P>If you are a SMETS2 customer, you may find that loading your data using the button below leads to all
-                            volumes being out by half an hour. If you find this, you may need to add a parameter to the url &n3adj=1 to correct
-                            for this. I am working with n3rgy to correct for this.</P>
                             <P>Note that at the moment each of these buttons will take about 10 seconds to load in the data. I will be working on optimising 
                             this over the coming days. </P>
                             <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''

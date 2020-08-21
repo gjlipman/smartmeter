@@ -298,9 +298,10 @@ def savetocsv(request, type_id):
     
     if option in ['hh_p','hh_q_p', 'd_q_c', 'd_p']:
         tariff = request.POST.get('tariff')
+        region = request.POST.get('region', None)
         if tariff=='Fixed':
             tariff = request.POST.get('price')
-        isfixed, pricestr = parsetariff(request, tariff, vat) 
+        isfixed, pricestr = parsetariff(request, tariff, vat, region=region) 
     else:
         pricestr = 'select period_id, 1 as value from periods'
 
