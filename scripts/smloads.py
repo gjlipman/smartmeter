@@ -4,12 +4,12 @@ import requests
 from io import StringIO
 import datetime
 import traceback
-from myutils.utils import cronlog, loadDataFromDb
+from myutils.utils import cronlog, loadDataFromDb, email_script
 
 cronlog()
 
 START='201901010000'
-
+errstr = ''
 def getintensity(dt):
     url = "https://api.carbonintensity.org.uk/intensity/"
     r = requests.get(url + dt + "/fw48h")
@@ -81,9 +81,8 @@ try:
     s = s[:-1] + ';'
     loadDataFromDb(s)
 except Exception as err:  
-    errstr = str(err) 
-    errstr += traceback.format_exc()
-    print(errstr)
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
 
 
 try:
@@ -116,9 +115,8 @@ try:
             s = s[:-1] + ';'
             loadDataFromDb(s)
 except Exception as err:  
-    errstr = str(err) 
-    errstr += traceback.format_exc()
-    print(errstr)
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
 
 
 try:
@@ -175,9 +173,8 @@ try:
             s = s[:-1] + ';'
             loadDataFromDb(s)        
 except Exception as err:  
-    errstr = str(err) 
-    errstr += traceback.format_exc()
-    print(errstr)
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
 
 try:
     cutoff = (datetime.datetime.now()-pd.offsets.Day(2)).isoformat()
@@ -190,6 +187,9 @@ try:
     '''
     loadDataFromDb(s)
 except Exception as err:  
-    errstr = str(err) 
-    errstr += traceback.format_exc()
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
+
+email_script(errstr, 'smloads.py', 1)
+if len(errstr):
     print(errstr)

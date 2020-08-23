@@ -1,4 +1,4 @@
-from myutils.utils import cronlog, loadDataFromDb
+from myutils.utils import cronlog, loadDataFromDb, email_script
 
 
 cronlog()
@@ -9,7 +9,7 @@ from io import StringIO
 import datetime
 import traceback
 
-
+errstr = ''
 try:
     s = '''
     with sessions as (    
@@ -31,7 +31,10 @@ try:
     #print(loadDataFromDb(s, returndf=True))
 
 except Exception as err:  
-    errstr = str(err) 
+    errstr += str(err) 
     errstr += traceback.format_exc()
+
+email_script(errstr, 'smdelete', 0)
+if len(errstr):
     print(errstr)
 
