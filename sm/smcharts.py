@@ -565,3 +565,126 @@ def emissionsPage(request):
     return output
 
 
+def netimportPage(request):
+    smid = get_sm_id(request)
+    start = request.GET.get('start', '2018-01-01')
+    end = request.GET.get('end','2025-01-01')    
+
+    if 'month' in request.GET:
+        month = request.GET.get('month')
+        if 'day' in request.GET:
+            day = int(request.GET.get('day'))
+            start = month + '-{:02d}'.format(day)
+            end = start
+            endstr = """
+            select local_date, local_time as local_time_start, timezone_adj, import as total_import, export as total_export
+            from fulldata order by period"""
+        else:
+            endstr = f"""
+            select local_date as day, count(period_id) as numperiods, sum(import) as total_import, sum(export) as total_export
+            from fulldata where date_trunc('month', local_date)='{month}-01'
+            group by local_date order by local_date"""
+    else:
+        endstr = f"""
+            select date_trunc('month',local_date) as month, count(period_id) as numperiods, 
+            sum(import) as total_import,
+            sum(export) as total_export
+            from fulldata group by month order by month"""
+
+    s = f'''
+    with periods as (select * from sm_periods where local_date between '{start}' and '{end}' )
+    , quantities1 as ({quantitystr(smid, 0)})
+    , quantities2 as ({quantitystr(smid, 2)})
+    , fulldata as 
+        (select periods.*, coalesce(quantities1.quantity,0) as import, coalesce(quantities2.quantity, 0) as export 
+        from periods inner join quantities2 on periods.period_id=quantities2.period_id
+        left outer join quantities1 on periods.period_id=quantities1.period_id)
+        {endstr}
+    ''' 
+
+    data = loadDataFromDb(s, returndf=True)
+    url = request.get_full_path()
+    
+    if data.shape[0]==0:
+        return nodata(request)
+ 
+
+    if 'month' in request.GET:
+        month = request.GET.get('month')
+        if 'day' in request.GET:
+            day = int(request.GET.get('day'))
+            heading = 'Half-hourly Net Import on {}-{:02d}'.format(month, day)
+            navbar = getnavbar(request)
+            description = f'Import and export for each half hour (in kWh, labels are start-times, in local time)'
+            labels = str(data['local_time_start'].tolist())
+            imports = str(['{:.2f}'.format(x) for x in data['total_import'].values])
+            exports = str(['{:.2f}'.format(x) for x in data['total_export'].values])
+            table = '<TABLE><TR><TH>Total Import</TH><TD>{:.3f}</TD></TR>'.format(data.total_import.sum())
+            table += '<TR><TH>Total Export</TH><TD>{:.3f}</TD></TR>'.format(data.total_export.sum())
+            table += '<TR><TH>Total Net Import</TH><TD>{:.3f}</TD></TR></TABLE>'.format(data.total_import.sum()-data.total_export.sum())
+            table += '<BR><TABLE><TR><TH>Period Start</TH><TH>Import</TH><TH>Export</TH><TH>Net Import</TH></TR>'
+            for _, j in data.iterrows():
+                t = '<TR><TD>{}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD></TR>'
+                table += t.format(j.local_time_start, j.total_import, j.total_export, j.total_import-j.total_export)
+            table += '</TABLE>'
+            
+        else:
+            heading = 'Daily Net Import for {}'.format(month)
+            navbar = getnavbar(request)
+            description = f"Daily import and export (in kWh) for each day"
+            labels = str([x.strftime('%d %b') for x in data['day'].tolist()])
+            imports = str(['{:.2f}'.format(x) for x in data.total_import.tolist()])
+            exports = str(['{:.2f}'.format(x) for x in data.total_export.tolist()])
+
+            table = '<TABLE><TR><TH>Total Import</TH><TD>{:.3f}</TD></TR>'.format(data.total_import.sum())
+            table += '<TR><TH>Total Export</TH><TD>{:.3f}</TD></TR>'.format(data.total_export.sum())
+            table += '<TR><TH>Total Net Import</TH><TD>{:.3f}</TD></TR></TABLE>'.format(data.total_import.sum()-data.total_export.sum())
+            table += '<BR><TABLE><TR><TH>Day</TH><TH>Import</TH><TH>Export</TH><TH>Net Import</TH></TR>'
+            for _, j in data.iterrows():
+                t = '<TR><TD><A HREF="{}">{}</A></TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD></TR>'
+                table += t.format(adj_url(url, [],[('day',j.day.day)]),
+                                j.day.strftime('%a %b %d'), j.total_import, j.total_export, j.total_import-j.total_export)
+            table += '</TABLE>'  
+    else:        
+        heading = 'Monthly Net Import'
+        navbar = getnavbar(request)
+        description = f"Monthly import and export (in kWh) for each month:"
+        labels = str([x.strftime('%b-%Y') for x in data['month'].tolist()])
+        imports = str(['{:.2f}'.format(x) for x in data.total_import.tolist()])
+        exports = str(['{:.2f}'.format(x) for x in data.total_export.tolist()])
+        table = '<TABLE><TR><TH>Total Import</TH><TD>{:.3f}</TD></TR>'.format(data.total_import.sum())
+        table += '<TR><TH>Total Export</TH><TD>{:.3f}</TD></TR>'.format(data.total_export.sum())
+        table += '<TR><TH>Net Import</TH><TD>{:.3f}</TD></TR></TABLE>'.format(data.total_import.sum()-data.total_export.sum())
+
+        table += '<BR><TABLE><TR><TH>Month</TH><TH>Total<BR>Import</TH><TH>Total<BR>Export</TH><TH>Net<BR>Import</TH></TR>'
+        for _, j in data.iterrows():
+            t = '<TR><TD><A HREF="{}">{}</A></TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD></TR>'
+            table += t.format(adj_url(url, [],[('month',j.month.strftime('%Y-%m'))]),
+                                j.month.strftime('%b %Y'), j.total_import, j.total_export, j.total_import-j.total_export)
+        table += '</TABLE>'  
+
+    if 'chartscale' in request.GET:
+        c = request.GET.get('chartscale').split(',')
+        chartscale = f'min: {c[0]}, '
+        if len(c)>1:
+            chartscale += f'max: {c[1]}, '
+    else:
+        chartscale = 'suggestedMin: 0'
+
+    with open(os.path.dirname(os.path.realpath(__file__))  + "/templates/chart_template3.html", "r") as f:
+        inner = f.read()
+
+
+    kwargs = {'navbar': navbar ,
+            'description': description,
+            'chartlabels': labels,
+            'imports': imports,
+            'exports': exports,
+            'table': table+'<BR>',
+            'chartscale': chartscale,
+            }    
+    for k, v in kwargs.items():
+        inner = inner.replace('{' + k + '}', v)
+
+    output = create_sm_page(request, inner, heading)
+    return output

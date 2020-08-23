@@ -1,4 +1,4 @@
-from myutils.utils import getConnection, load_bmrs_data, cronlog, metkey, loadDataFromDb
+from myutils.utils import cronlog, loadDataFromDb
 
 
 cronlog()

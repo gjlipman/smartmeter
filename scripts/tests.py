@@ -4,8 +4,8 @@ import os
 import sys
 import pandas as pd
 sys.path.append("/home/django/django_project/")
-from app1.smviews import inner
-from app1.forecastviews import index
+from sm.smviews import inner
+from covidstats.views import index
 
 
 class TestRequest:
@@ -84,4 +84,4 @@ if __name__ == "__main__":
     
         checkurl2('/forecasts?region=C')
 
-    checkurl('/sm/analysis?debug&region=C')
+    checkurl('/sm/netconsumption?debug')

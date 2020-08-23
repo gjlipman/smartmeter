@@ -7,7 +7,7 @@ import pandas as pd
 from myutils.smutils import sm_log
 from .smprod import (adminPage, homepage, moreinfo,
                              checkRequest, gettingStartedPage, getmode, otherPage)
-from .smcharts import (consumptionPage, costPage, emissionsPage)
+from .smcharts import (consumptionPage, costPage, emissionsPage, netimportPage)
 from .smtest import (get_savecsvPage, billsPage, checksPage, logPage, gastrackerpage, tariffcomparison, analysisPage)
 
 
@@ -28,6 +28,8 @@ def inner(request, choice):
         output = adminPage( request)
     elif choice in ['consumption','gasconsumption','export']:
         output = consumptionPage(request, choice)
+    elif choice in ['netimport']:
+        output = netimportPage(request)
     elif choice in ['cost','gascost','exportrevenue']:
         output = costPage(request, choice)
     elif choice in ['bills', 'gasbills','exportbills']:

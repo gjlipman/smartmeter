@@ -510,7 +510,7 @@ def adj_url(url, remove, change):
 
 menuitems = [(0,[('consumption','Consumption'), ('cost','Cost'), ('bills', 'Bill Calculator'), ('compare','Compare Tariffs'), ('analysis','Profile Analysis'), ('emissions', 'Emissions'), ('savecsv', 'Save to CSV')]),
                 (1, [('gasconsumption','Consumption'), ('gascost','Cost'), ('gasbills','Bill Calculator'), ('gascompare','Compare Tariffs'), ('gassavecsv', 'Save to CSV')]),
-                (2, [('export', 'Export Quantities'), ('exportrevenue','Revenue'), ('exportbills', 'Bill Calculator'), ('exportcompare', 'Compare Tariffs'), ('exportsavecsv','Save to CSV')])  ]
+                (2, [('export', 'Export Quantities'), ('netimport', 'Net Import'), ('exportrevenue','Revenue'), ('exportbills', 'Bill Calculator'), ('exportcompare', 'Compare Tariffs'), ('exportsavecsv','Save to CSV')])  ]
 
 
 def sm_log(request, choice, smid=None):
