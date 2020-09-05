@@ -42,6 +42,13 @@ def inner(request, choice):
         output = emissionsPage(request)
     elif choice in ['analysis']:
         output = analysisPage(request)
+    elif choice in ['memory']:
+        from .smtest import memoryPage
+        output = memoryPage(request)
+    elif choice in ['octobill']:
+        from .smtest import octobillPage
+        output = octobillPage(request)
+        
     elif choice in ['other']:
         output = otherPage(request)
     else:      

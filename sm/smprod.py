@@ -36,7 +36,7 @@ def checkRequest(request):
             u = adj_url(url, [], [('tariff', '15')])
             return redirect(u)
 
-    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'other']:
+    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'other','memory','octobill']:
         return choice
 
     type_id, type_label = get_type_id(choice)   

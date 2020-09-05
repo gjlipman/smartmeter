@@ -288,6 +288,20 @@ def billsPage(request, choice):
 
     return create_sm_page(request, content, heading)
 
+def memoryPage(request):
+    import gc
+    found_objects = gc.get_objects()
+    data = [(sys.getsizeof(obj), str(type(obj)).replace('<','').replace('>',''), repr(obj)[:130]) for obj in found_objects]
+    data.sort(reverse=True)
+    m = sum([d[0] for d in data])/1000000
+    s = f'Total: {m}MB ({len(data)} objects)<BR>' 
+    data = [d for d in data if len(d[1])>1]
+    s += '<BR>'.join([f'{d[0]}: {d[1]}: {d[2]}' for d in data[:50]])
+
+
+    
+
+
 
 
 def savetocsv(request, type_id):
@@ -1036,3 +1050,172 @@ def analysisPage(request):
 
     return create_sm_page(request, inner, heading)
 
+def load_transactions(key):
+    import requests
+    url = 'https://api.octopus.energy/v1/graphql/'
+    
+    query = """
+        mutation APIKeyAuthentication($apiKey: String!) {
+          apiKeyAuthentication(apiKey: $apiKey) {
+            token,
+          }
+        }
+    """
+    variables = {'apiKey': key[10:]}
+    
+    r = requests.post(url, json={'query': query, 'variables': variables}, )
+    headers = {'Authorization': r.json()['data']['apiKeyAuthentication']['token']}
+    
+    
+    
+    
+    query = """
+        query getBalanceHistory($accountNumber: String!, $cursor: String) {
+                account(accountNumber: $accountNumber) {
+                        transactions(first: 1000, after: $cursor) {
+                            edges {
+                                    node {__typename,id,title,postedDate,amount,balanceCarriedForward,isHeld,          
+                                        ... on Charge {
+                                                consumption {startDate,endDate,quantity,unit,__typename},
+                                                __typename
+                                                },
+                                        }
+                                        }
+                        }  }}
+    """
+    
+    
+    variables= {'accountNumber': key[:10]}
+    r = requests.post(url, json={'query': query, 'variables': variables}, headers=headers )
+    
+    t = r.json()['data']['account']['transactions']['edges']   
+    return t
+
+def get_transactions(t, hasexport):
+    t = [x['node'] for x in t ]
+    t.sort(key=lambda x: int(x['id']), reverse=True)
+    for num, x in enumerate(t):
+        if num==len(t)-1:
+            prior = 0
+        else:
+            prior = t[num+1]['balanceCarriedForward']
+        x['amount'] = (x['balanceCarriedForward']-prior)/100   
+        if 'consumption' in x.keys():
+            if isinstance(x['consumption'], dict):
+                for col in ['startDate','endDate','quantity']:
+                    x[col] = x['consumption'][col]
+            x.pop('consumption')
+        x.pop('id')
+        x.pop('balanceCarriedForward')
+        x.pop('isHeld')
+    
+    transactions = {'payments': [], 
+                    'rewards': [], 
+                    'electricity': [], 
+                    'gas': [], 
+                    'export': [],
+                    'other': [], }
+    
+    
+    for x in t:
+        if x['__typename']=='Payment':
+            transactions['payments'].append(x)
+        elif x['__typename']=='Charge':
+            if x['title']=='Gas':
+                transactions['gas'].append(x)
+            elif x['title']=='Electricity':
+                if hasexport and x['amount']>0:
+                    x['title']=='Export'
+                    transactions['export'].append(x)
+                elif x['amount']<0:
+                    transactions['electricity'].append(x)
+                else:
+                    transactions['electricity'].append(x)
+            elif x['title']=='Default':
+                transactions['payments'].append(x)
+            else:
+                transactions['other'].append(x)
+        elif x['__typename']=='Credit':
+            if x['title'] in ['Electricity','Gas']:
+                if x['title']=='Electricity' and hasexport and x['amount']<0:
+                    x['title'] = 'Export'
+                transactions['other'].append(x)
+            elif 'reward' in x['title']:
+                transactions['rewards'].append(x)
+            elif 'gesture' in x['title']:
+                transactions['rewards'].append(x)
+            elif 'credit refund' in x['title']:
+                transactions['payments'].append(x)
+            else:
+                transactions['other'].append(x)
+        else:
+            transactions['other'].append(x)
+    
+    
+    
+    for commod in ['electricity','gas','export']:
+        otherise_old = 0
+        if len(transactions[commod]):
+            if otherise_old:
+                for idx in range(len(transactions[commod])-1,-1,-1):
+                    if transactions[commod][idx]['startDate'] is None:
+                        transactions['other'].append(transactions[commod].pop(idx))
+            
+            temp = pd.DataFrame( transactions[commod])
+            temp['valid'] = 1
+            
+            start = temp.loc[0].startDate
+            end = temp.loc[0].endDate
+            for i in range(1,len(temp)):
+                if temp.loc[i].startDate is not None:
+                    if start<=temp.loc[i].startDate<temp.loc[i].endDate<=end:
+                        temp.loc[i, 'valid']=0
+                    else:
+                        if temp.loc[i].startDate<start:
+                            start = temp.loc[i].startDate
+                        if temp.loc[i].endDate>end:
+                            end = temp.loc[i].endDate
+            
+            for i in temp[temp.valid==0].index.sort_values(ascending=False):
+                transactions['other'].append(transactions[commod].pop(i))
+            
+            temp = temp[temp.valid==1]
+            temp['days'] = (pd.DatetimeIndex(temp.endDate)-pd.DatetimeIndex(temp.startDate)).days+1
+            temp['MWh_daily'] = temp.quantity.astype(float)/temp['days']
+            temp['cost_daily'] = temp.amount/temp['days']
+            temp = temp[['postedDate','amount','startDate','endDate','cost_daily','MWh_daily']].sort_values('startDate',ascending=False)
+            transactions[commod] = temp
+    
+    
+    for commod in ['payments','rewards']:
+        transactions[commod] = pd.DataFrame(transactions[commod])[['title','postedDate','amount']].sort_values('postedDate',ascending=False)
+    
+    
+    temp = pd.DataFrame(transactions['other'])
+    temp = temp.sort_values(['title','postedDate'], ascending=False)
+    temp = temp[['title','__typename','postedDate','amount']]
+    transactions['other'] = temp
+    return transactions, t
+
+def octobillPage(request):
+    key = request.GET.get('octopus')
+    t = load_transactions(key)
+    hasexport = int(request.GET.get('mode','111')[2])
+    transactions, t = get_transactions(t, hasexport)
+    s = """
+        <P>The Octopus balance history is quite hard to follow, especially if you have had bills recalculated. This page pulls in 
+        all the transactions from your Octopus account and attempts to present them in a more meaningful manner. It won't be able to handle
+        every situation, but I hope it is useful.</P>"""
+    s += "<H3>Summary</H3><TABLE>"
+
+    for col in ['payments','rewards','gas','electricity','export','other']:
+        if len(transactions[col]):
+            s += f"<TR><TD>{col.capitalize()}</TD><TD>{transactions[col].amount.sum():.2f}</TD></TR>"
+    s += f"<TR><TH>Net Balance</TH><TH>{pd.DataFrame(t).amount.sum():.2f}</TH></TR></TABLE><BR>"
+
+    for col in ['payments','rewards','gas','electricity','export','other']:
+        if len(transactions[col]):  
+            s += f'<H3>{col.capitalize()}: {transactions[col].amount.sum():.2f}</H3>'
+            s += transactions[col].to_html(float_format='%.2f', index=False) + '<BR>'
+
+    return create_sm_page(request, s, 'Octopus Balance Reconciliation')
