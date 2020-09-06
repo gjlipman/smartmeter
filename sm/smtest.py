@@ -1253,7 +1253,7 @@ def octobillPage(request):
     for col in ['payments','rewards','gas','electricity','export','other']:
         if len(transactions[col]):
             s += f"<TR><TD>{col.capitalize()}</TD><TD>{transactions[col].amount.sum():.2f}</TD></TR>"
-    s += f"<TR><TH>End Balance</TH><TH>{pd.DataFrame(t).amount.sum():.2f}</TH></TR></TABLE><BR>"
+    s += f"<TR><TH>End Balance</TH><TH>{prior+pd.DataFrame(t).amount.sum():.2f}</TH></TR></TABLE><BR>"
 
     for col in ['payments','rewards','gas','electricity','export','other']:
         if len(transactions[col]):  
