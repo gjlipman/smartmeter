@@ -1089,9 +1089,6 @@ def load_transactions(key):
     r = requests.post(url, json={'query': query, 'variables': variables}, headers=headers )
     
     t = r.json()['data']['account']['transactions']['edges']   
-    return t
-
-def get_transactions(t, hasexport):
     t = [x['node'] for x in t ]
     t.sort(key=lambda x: int(x['id']), reverse=True)
     for num, x in enumerate(t):
@@ -1108,7 +1105,9 @@ def get_transactions(t, hasexport):
         x.pop('id')
         x.pop('balanceCarriedForward')
         x.pop('isHeld')
-    
+    return t
+
+def get_transactions(t, hasexport):
     transactions = {'payments': [], 
                     'rewards': [], 
                     'electricity': [], 
@@ -1181,37 +1180,80 @@ def get_transactions(t, hasexport):
             
             temp = temp[temp.valid==1]
             temp['days'] = (pd.DatetimeIndex(temp.endDate)-pd.DatetimeIndex(temp.startDate)).days+1
-            temp['MWh_daily'] = temp.quantity.astype(float)/temp['days']
+            temp['kWh_daily'] = temp.quantity.astype(float)/temp['days']
+            temp['kWh_total'] = temp.quantity.astype(float)
             temp['cost_daily'] = temp.amount/temp['days']
-            temp = temp[['postedDate','amount','startDate','endDate','cost_daily','MWh_daily']].sort_values('startDate',ascending=False)
+            temp = temp[['postedDate','amount','startDate','endDate','cost_daily','kWh_daily','kWh_total']].sort_values('startDate',ascending=False)
             transactions[commod] = temp
     
     
     for commod in ['payments','rewards']:
-        transactions[commod] = pd.DataFrame(transactions[commod])[['title','postedDate','amount']].sort_values('postedDate',ascending=False)
+        if len(transactions[commod]):
+            transactions[commod] = pd.DataFrame(transactions[commod])[['title','postedDate','amount']].sort_values('postedDate',ascending=False)
     
-    
-    temp = pd.DataFrame(transactions['other'])
-    temp = temp.sort_values(['title','postedDate'], ascending=False)
-    temp = temp[['title','__typename','postedDate','amount']]
-    transactions['other'] = temp
-    return transactions, t
+    if len(transactions['other']):
+        temp = pd.DataFrame(transactions['other'])
+        temp = temp.sort_values(['title','postedDate'], ascending=False)
+        temp = temp[['title','__typename','postedDate','amount']]
+        transactions['other'] = temp
+    return transactions
 
 def octobillPage(request):
     key = request.GET.get('octopus')
-    t = load_transactions(key)
-    hasexport = int(request.GET.get('mode','111')[2])
-    transactions, t = get_transactions(t, hasexport)
+
     s = """
         <P>The Octopus balance history is quite hard to follow, especially if you have had bills recalculated. This page pulls in 
         all the transactions from your Octopus account and attempts to present them in a more meaningful manner. It won't be able to handle
         every situation, but I hope it is useful.</P>"""
-    s += "<H3>Summary</H3><TABLE>"
 
+    if request.method=='POST':
+        start = request.POST.get('start')
+        end = request.POST.get('end')
+    else:
+        start = '2016/01/01'
+        end = '2020/12/31'
+
+    s += f"""
+    <form action="{request.get_full_path()}" method="post">
+    <div class="form-group row">
+    <label for="inputEmail3" class="col-sm-2 col-form-label">Start Date (yyyy/mm/dd)</label>
+    <div class="col-sm-10">
+      <input type="string" class="form-control" name="start" value="{start}">
+    </div>
+    </div>
+ 
+    <div class="form-group row">
+    <label for="inputEmail3" class="col-sm-2 col-form-label">End Date (yyyy/mm/dd)</label>
+    <div class="col-sm-10">
+      <input type="text" class="form-control" name="end" value="{end}">
+    </div>
+    </div>
+
+    <div class="form-group row">
+      <div class="col-sm-10">
+        <button type="submit" class="btn btn-primary">Load Transactions</button>
+      </div>
+    </div>
+    </form>
+    """    
+
+    t = load_transactions(key)
+    prior = [x for x in t if x['postedDate']<=start.replace('/','-')]
+    if len(prior):
+        prior = pd.DataFrame(prior).amount.sum()
+    else:
+        prior = 0
+    t = [x for x in t if start.replace('/','-')<x['postedDate']<=end.replace('/','-')]
+
+    hasexport = int(request.GET.get('mode','111')[2])
+    transactions = get_transactions(t, hasexport)
+
+    s += "<H3>Summary</H3><TABLE>"
+    s += f"<TR><TD>Prior Balance</TD><TD>{prior:.2f}</TD></TR>"
     for col in ['payments','rewards','gas','electricity','export','other']:
         if len(transactions[col]):
             s += f"<TR><TD>{col.capitalize()}</TD><TD>{transactions[col].amount.sum():.2f}</TD></TR>"
-    s += f"<TR><TH>Net Balance</TH><TH>{pd.DataFrame(t).amount.sum():.2f}</TH></TR></TABLE><BR>"
+    s += f"<TR><TH>End Balance</TH><TH>{pd.DataFrame(t).amount.sum():.2f}</TH></TR></TABLE><BR>"
 
     for col in ['payments','rewards','gas','electricity','export','other']:
         if len(transactions[col]):  
