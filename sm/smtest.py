@@ -736,9 +736,12 @@ def logPage(request):
 
 
 def gastrackerpage(request):
-    s = '''
+    choice = request.path_info.split('/')[-1]
+    type_id = 0 if choice=='electracker' else 1
+    s = f'''
     select local_date, region, value from sm_d_variable_vals v 
-    inner join sm_variables t on t.var_id=v.var_id and t.granularity_id=1 and t.product='SILVER-2017-1' order by local_date desc
+    inner join sm_variables t on t.var_id=v.var_id and t.granularity_id=1 and t.product='SILVER-2017-1' 
+    and type_id={type_id} order by local_date desc
     '''
     df = loadDataFromDb(s, returndf=True)
     df = df.groupby(['local_date','region']).sum()
@@ -746,10 +749,14 @@ def gastrackerpage(request):
     df = df.unstack()
     df = df.sort_index(ascending=False)
     df = df['value']
-    df['Wholesale'] = (df['A']/1.05-1.13)/1.06
+    if type_id == 0:
+        df['Wholesale'] = (df['A']/1.05-7.12)/1.2
+    else:
+        df['Wholesale'] = (df['A']/1.05-1.13)/1.06
     s = '<P>All prices are in p/kwh. Regional retail prices include VAT, wholesale prices do not include VAT.</P>'
     s += df.to_html(float_format='%.3f').replace('Wholesale','Wholesale<BR>p/kwh')
-    return create_sm_page(request, s, 'Gas Tracker Prices')
+    header = 'Electricity' if type_id==0 else 'Gas'
+    return create_sm_page(request, s, f'Octopus {header} Tracker Prices')
 
 def calccomparison(request, choice, tariffs):
     type_id, type_label = get_type_id(choice)

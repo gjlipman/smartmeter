@@ -53,7 +53,7 @@ def getTariff(request, choice):
                 include a parameter like &tariff=10.3. This tariff is assumed to be in p/kwh, including VAT, excluding any standing charges.</P>
 
             <P>You can also choose a time-varying tariff, although at this point I have only added the data for Octopus Agile 
-            and GO for electricity (AGILE-18-02-21, GO-18-06-12). Next on my list to add are Octopus's Go Faster tariffs, and their Gas Tracker. 
+            and GO and Tracker for electricity (AGILE-18-02-21, GO-18-06-12, SILVER-2017-1). Next on my list to add are Octopus's Go Faster tariffs, and their Gas Tracker. 
             Let me know if there are time-varying 
             tariffs from other suppliers you would find useful for me to add.
             To use this, include the parameter &tariff=AGILE-18-02-21&amp;region=C. 

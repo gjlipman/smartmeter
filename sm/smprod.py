@@ -36,7 +36,7 @@ def checkRequest(request):
             u = adj_url(url, [], [('tariff', '15')])
             return redirect(u)
 
-    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'other','memory','octobill']:
+    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'electracker', 'other','memory','octobill']:
         return choice
 
     type_id, type_label = get_type_id(choice)   
@@ -69,7 +69,7 @@ def checkRequest(request):
                 if 'region' not in request.GET:
                     return getTariff(request, choice) 
                 region = request.GET.get('region')
-                s = "select var_id, granularity_id from sm_variables where product='{}' and region='{}'".format(tariff, region)
+                s = f"select var_id, granularity_id from sm_variables where product='{tariff}' and region='{region}' and type_id={type_id}"
                 s = loadDataFromDb(s)  
                 if len(s)==0:
                     return getTariff(request, choice)   
@@ -98,6 +98,8 @@ def otherPage(request):
     <UL>
     <LI><A HREF="{url.replace('other', 'info')}">More Information about this site</A></LI>
     <LI><A HREF="{url.replace('other', 'gastracker')}">Octopus Gas Tracker Prices</A></LI>
+    <LI><A HREF="{url.replace('other', 'electracker')}">Octopus Gas Tracker Prices</A></LI>
+    <LI><A HREF="{url.replace('other', 'octobill')}">Octopus Balance Reconiliation</A></LI>
     <LI><A HREF="{url.replace('other','logpage')}">Log Page</A></LI>
     <LI><A HREF="{url.replace('other','checks')}">Market Data Checks</A></LI>
     </UL></P>
@@ -600,8 +602,8 @@ def gettingStartedPage(request):
     <H4>Electricity Cost Data</H4>
     <P>Similarly to electricity consumption, you can see monthly cost since 2019, daily cost for a given month, and half hourly cost for a given day.</P>
     <P>In order to calculate the cost, we need to know your tariff. You can set a fixed tariff (&tariff=15) - this is interpreted as the tariff in p/kwh, 
-    including VAT, and excluding any standing charges. Alternatively, you can use a time-varying tariff like Octopus's AGILE-18-02-21 or GO-18-06-12 
-    (at the moment these are the only two time-varying tariffs I've made available, but I will be adding more later). In order to use the 
+    including VAT, and excluding any standing charges. Alternatively, you can use a time-varying tariff like Octopus's AGILE-18-02-21 or GO-18-06-12 or SILVER-2017-1
+    (at the moment these are the only time-varying tariffs I've made available, but I will be adding more later). In order to use the 
     time-varying tariffs, you will also need to include your region code, eg C for London. So for me, I set &tariff=AGILE-18-02-21&amp;region=C. If you aren't sure
     what your region code is, you can find it on the Admin page, or if you leave it off you'll be presented with a list. </P>
 

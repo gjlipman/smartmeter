@@ -14,7 +14,7 @@ from .smtest import (get_savecsvPage, billsPage, checksPage, logPage, gastracker
 def inner(request, choice):
     if choice == 'home':
         output = homepage(request)
-    elif choice == 'gastracker':
+    elif choice in ['gastracker','electracker']:
         output = gastrackerpage(request)     
     elif choice == 'info':
         output = moreinfo(request)

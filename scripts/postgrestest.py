@@ -326,7 +326,7 @@ if False:
     product = 'SILVER-2017-1'
 
     for region in ['A','B','C','D','E','F','G','H','J','K','L','M','N','P']:
-        s = f"select var_id from sm_tariffs where product='{product}' and region='{region}';"
+        s = f"select var_id from sm_variables where product='{product}' and region='{region}' ;"
         var_id = loadDataFromDb(s)[0][0]   
 
         r = requests.get(f'https://octopus.energy/api/v1/tracker/G-1R-SILVER-2017-1-{region}/daily/past/540/1/')    
@@ -1187,10 +1187,34 @@ if False:
     print(loadDataFromDb(s, returndf=True))    
     
 
-s = '''
-select * from 
-sm_variables
 
-'''
 
-print(loadDataFromDb(s, returndf=True)) 
+s = """
+select sm_variables.var_id, product, region, max(sm_d_variable_vals.local_date) as latest_date 
+from sm_variables 
+left outer join sm_d_variable_vals on sm_variables.var_id=sm_d_variable_vals.var_id 
+where sm_variables.granularity_id=1 and sm_variables.type_id=0
+group by sm_variables.var_id, product, region;
+"""
+mins = loadDataFromDb(s, returndf=True)
+
+for i, j in mins.iterrows():
+    if j['product'] not in ['SILVER-2017-1']:
+        continue 
+
+    r = requests.get(f'https://octopus.energy/api/v1/tracker/E-1R-SILVER-2017-1-{j.region}/daily/past/600/1/')
+    dates = [x['date'] for x in r.json()['periods']]
+    prices = [x['unit_rate'] for x in r.json()['periods']]
+    d = pd.Series(prices, index=dates)
+    d = d[:datetime.date.today().strftime('%Y-%m-%d')]
+    d = d/1.05
+
+
+    if len(d)>0:
+        s = """
+        INSERT INTO sm_d_variable_vals (var_id, local_date, value) values
+        """
+        for a, b in d.iteritems():
+            s+= f" ({j.var_id}, '{a}', {b}),"
+        s = s[:-1] + ';'
+        loadDataFromDb(s)
