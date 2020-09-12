@@ -1170,17 +1170,14 @@ def get_transactions(t, hasexport):
             temp = pd.DataFrame( transactions[commod])
             temp['valid'] = 1
             
-            start = temp.loc[0].startDate
-            end = temp.loc[0].endDate
             for i in range(1,len(temp)):
-                if temp.loc[i].startDate is not None:
-                    if start<=temp.loc[i].startDate<temp.loc[i].endDate<=end:
-                        temp.loc[i, 'valid']=0
-                    else:
-                        if temp.loc[i].startDate<start:
-                            start = temp.loc[i].startDate
-                        if temp.loc[i].endDate>end:
-                            end = temp.loc[i].endDate
+                start = temp.loc[i].startDate
+                end = temp.loc[i].endDate         
+                for j in range(i):
+                    if temp.loc[j, 'valid']==1:
+                        if (temp.loc[j].startDate<=start<=temp.loc[j].endDate) or (temp.loc[j].startDate<=end<=temp.loc[j].endDate):
+                            temp.loc[i, 'valid']=0
+                            break
             
             for i in temp[temp.valid==0].index.sort_values(ascending=False):
                 transactions['other'].append(transactions[commod].pop(i))
@@ -1201,7 +1198,7 @@ def get_transactions(t, hasexport):
     if len(transactions['other']):
         temp = pd.DataFrame(transactions['other'])
         temp = temp.sort_values(['title','postedDate'], ascending=False)
-        temp = temp[['title','__typename','postedDate','amount']]
+        temp = temp[['title','__typename','postedDate','amount','startDate','endDate']]
         transactions['other'] = temp
     return transactions
 
