@@ -31,7 +31,7 @@ def gettariffselector(type_id, tariff, price):
             price = 0.0
 
     if type_id == 0:
-        tariffs =   ['Fixed','AGILE-18-02-21', 'GO-18-06-12']    
+        tariffs =   ['Fixed','AGILE-18-02-21', 'GO-18-06-12', 'SILVER-2017-1']    
     elif type_id == 2:
         tariffs = ['Fixed', 'AGILE-OUTGOING-19-05-13']
     else:
@@ -838,13 +838,16 @@ def tariffcomparison(request, choice):
         tariffs = [tariff]
         
         if type_id==0:
-            for t in ['AGILE-18-02-21','GO-18-06-12']:
+            for t in ['AGILE-18-02-21','GO-18-06-12','SILVER-2017-1']:
                 if tariff!=t:
                     tariffs.append(t)
             tariffs.append('14.469')
             tariffs.append('0000-0800:9.681,15.8445')
         elif type_id==1:
-            tariffs.append('2.562')
+            if tariff!='SILVER-2017-1':
+                tariffs.append('SILVER-2017-1')
+            else:
+                tariffs.append('2.562')
         elif type_id==2:
             if tariff!='AGILE-OUTGOING-19-05-13':
                 tariffs.append('AGILE-OUTGOING-19-05-13')
