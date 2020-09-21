@@ -531,7 +531,12 @@ def sm_log(request, choice, smid=None):
     elif 'n3rgy' in request.GET:
         url = adj_url(url, [], [('n3rgy','')])
 
-    smid = smid or get_sm_id(request)
+    if smid is None:
+        if isdemo(request):
+            smid = None
+        else:
+            smid = get_sm_id(request)
+
     if smid is None:
         smid = 'Null'
     else:

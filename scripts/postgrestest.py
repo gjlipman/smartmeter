@@ -1186,3 +1186,10 @@ if False:
     s = "select count(id) from sm_quantity"
     print(loadDataFromDb(s, returndf=True))    
     
+if False:
+    s = '''Update sm_log set session_id=Null where session_id='e4280c7d-9d06-4bbe-87b4-f9e106ede788' '''
+    #'e4280c7d-9d06-4bbe-87b4-f9e106ede788'
+    print(loadDataFromDb(s))
+    s = '''select * from sm_log where session_id='e4280c7d-9d06-4bbe-87b4-f9e106ede788' limit 5'''
+
+    print(loadDataFromDb(s, returndf=True))   
