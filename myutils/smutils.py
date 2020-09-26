@@ -543,8 +543,8 @@ def sm_log(request, choice, smid=None):
         smid = f"'{smid}'"
 
     s = f"""
-    insert into sm_log (datetime, choice, method, session_id, url) values 
-    (CURRENT_TIMESTAMP, '{choice}', {method}, {smid}, '{url[:120]}');
+    insert into sm_log (datetime, choice, method, session_id, url, http_user_agent) values 
+    (CURRENT_TIMESTAMP, '{choice}', {method}, {smid}, '{url[:120]}', '{request.META.get('HTTP_USER_AGENT')[:120]}');
     """
     loadDataFromDb(s)
 

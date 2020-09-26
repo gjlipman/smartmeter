@@ -23,6 +23,7 @@ from sm import smviews
 
 urlpatterns = [
     path('', view.index, name='index'),
+    path('robots.txt', smviews.robots_txt),
     url(r'forecasts/*', forecastviews.index, name='forecasts'),
     url(r'covidstats/*', covidstatsviews.index, name='covidstats'),
     path('sm/<slug:choice>', smviews.index, name='sm'),

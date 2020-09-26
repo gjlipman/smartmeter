@@ -289,6 +289,12 @@ def billsPage(request, choice):
     return create_sm_page(request, content, heading)
 
 def memoryPage(request):
+    s = ''
+    for i, j in request.META.items():
+        s += f'<BR>{i}: {j}'
+    return s
+
+
     import gc
     found_objects = gc.get_objects()
     data = [(sys.getsizeof(obj), str(type(obj)).replace('<','').replace('>',''), repr(obj)[:130]) for obj in found_objects]
@@ -647,9 +653,15 @@ def checksPage(request):
 
 def savelogtocsv(request):
     date = request.POST.get('date')
+    extra = ''
+    if 'reqagent' in request.GET:
+        extra += ' and http_user_agent is not Null '
+    if 'reqsession' in request.GET:
+        extra += ' and session_id is not Null '
     s = f"""
-    select id, datetime, method, choice, session_id, url
+    select id, datetime, method, choice, session_id, url, http_user_agent
     from sm_log where date(datetime-Interval '3 hours')='{date}'
+    {extra}
     order by id desc;
     """
     

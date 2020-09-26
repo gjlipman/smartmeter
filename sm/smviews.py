@@ -10,6 +10,12 @@ from .smprod import (adminPage, homepage, moreinfo,
 from .smcharts import (consumptionPage, costPage, emissionsPage, netimportPage)
 from .smtest import (get_savecsvPage, billsPage, checksPage, logPage, gastrackerpage, tariffcomparison, analysisPage)
 
+def robots_txt(request):
+    lines = [
+        "User-Agent: *",
+        "Crawl-delay: 3600",
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")
 
 def inner(request, choice):
     if choice == 'home':
