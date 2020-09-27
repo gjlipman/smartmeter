@@ -88,8 +88,17 @@ def runsql(request):
         errstr += '<BR>'.join([x for x in traceback.format_exc().splitlines()])
         return HttpResponse(errstr)
 
+def bot_to_reject(request):
+    bots = ['SemrushBot', 'AhrefsBot']
+    for bot in bots:
+        if bot in request.GET.get('HTTP_USER_AGENT',''):
+            return True
+    return False
+
 def index(request, choice):
     try:
+        if bot_to_reject(request):
+            return HttpResponse('badagent - try from a different browser')
         if choice=='smidcheck':
             s = ''
             for k, v in request.COOKIES.items():
