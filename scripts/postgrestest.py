@@ -1193,3 +1193,176 @@ if False:
     s = '''select * from sm_log where session_id='e4280c7d-9d06-4bbe-87b4-f9e106ede788' limit 5'''
 
     print(loadDataFromDb(s, returndf=True))   
+
+if False:
+    s = f'''
+    select concat(local_date, ' ', local_time) dt, value from sm_hh_variable_vals v 
+    inner join sm_periods on v.period_id=sm_periods.period_id
+    inner join sm_tariffs on sm_tariffs.var_id=v.var_id
+    where product='AGILE-18-02-21' and region='C' 
+    order by dt desc limit 10
+    '''
+    print(loadDataFromDb(s, returndf=True))  
+    s = f'''
+    select concat(local_date, ' ', local_time) dt, value from sm_hh_variable_vals v 
+    inner join sm_periods on v.period_id=sm_periods.period_id
+    inner join sm_tariffs on sm_tariffs.var_id=v.var_id
+    where product='AGILE-18-02-21' and region='C' 
+    and concat(sm_periods.local_date, ' ', sm_periods.local_time)>='2020-10-01T00:00'
+    order by dt
+    '''
+    print(loadDataFromDb(s, returndf=True))  
+
+    idx = pd.date_range(START, '202101010000', freq='30T')  
+    df = pd.DataFrame()
+    df['timestamp'] = idx
+    df = pd.DataFrame(idx, columns=['timestamp'])
+
+    s = """
+    select sm_variables.var_id, product, region, max(sm_periods.period_id) as period_id, max(period) as period 
+    from sm_variables
+    inner join sm_hh_variable_vals on sm_variables.var_id=sm_hh_variable_vals.var_id and sm_variables.granularity_id=0 
+    and sm_variables.region!='Z'
+    inner join sm_periods on sm_periods.period_id=sm_hh_variable_vals.period_id
+    group by sm_variables.var_id, product, region;
+    """
+    mins = loadDataFromDb(s, returndf=True)
+    print(mins)
+
+    for i, j in mins.iterrows():
+
+        if j['product'] not in ['AGILE-18-02-21','GO-18-06-12', 'AGILE-OUTGOING-19-05-13']:
+            continue 
+
+        start = j.period.replace(' ','T')
+        end = '2021-01-01T00:00'
+        url = ('https://api.octopus.energy/v1/products/{}/' + 
+            'electricity-tariffs/E-1R-{}-{}/standard-unit-rates/' + 
+                '?period_from={}Z&period_to={}Z&page_size=15000')
+  
+        url = url.format(j['product'], j['product'], j.region, start, end)
+        r = requests.get(url)
+
+        r = r.json().get('results',[])
+        if len(r)==0:
+            continue
+
+        dfs = pd.DataFrame(r)[['valid_from','valid_to','value_exc_vat']]
+        dfs.index = pd.DatetimeIndex(dfs.valid_from.str[:16])
+        dfs.sort_index(inplace=True)
+        dfs.loc[pd.Timestamp(dfs.valid_to[-1][:16])] = dfs.iloc[-1]
+        dfs = dfs.iloc[1:]
+        dfs = dfs['value_exc_vat']
+        dfs = dfs.resample('30T').ffill()
+        dfs = dfs.iloc[:-1].copy()               
+        dfs = pd.merge(left=df, right=dfs, left_on='timestamp', right_index=True, how='left')
+        dfs = dfs[dfs.value_exc_vat.notna()]
+        print(dfs)
+        if len(dfs):
+            s = """
+            INSERT INTO sm_hh_variable_vals (var_id, period_id, value) values
+            """
+            for a, b in dfs.iterrows():
+                s+= " ({}, {}, {}),".format(j.var_id, a, b.value_exc_vat)
+            s = s[:-1] + ';'
+            print(loadDataFromDb(s) )       
+
+
+if False:
+    conn, cur = getConnection()
+    df_idx = pd.date_range(datetime.datetime(2019,1,1), datetime.datetime(2021,7,1), freq='30min')
+    df_idx_local = df_idx.tz_localize('UTC').tz_convert('Europe/London')
+    df = pd.DataFrame(index=df_idx)
+    df['period'] = df_idx.strftime('%Y-%m-%d %H:%M')
+    df['local_date'] = df_idx_local.strftime('%Y-%m-%d')
+    df['local_time'] = df_idx_local.strftime('%H:%M')
+    df['timezone_adj'] = df_idx_local.strftime('%z').str[0:3].astype(int)
+    df.reset_index(inplace=True)
+    df = df.loc[30673:]
+    print(df)
+
+    start = """
+    INSERT INTO sm_periods (period_id, period, local_date, local_time, timezone_adj)
+    VALUES 
+    """
+    s=""
+    for i, j in df.iterrows():
+        s+= "({},'{}', '{}', '{}', {}),".format(i, j['period'], j['local_date'],j['local_time'], j['timezone_adj'])
+        if (i+1)%1000==0:
+            print('done: {}'.format(i+1))
+            cur.execute(start + s[:-1] + ';')
+            conn.commit()
+            s=""
+            
+    print('done: {}'.format(i+1))
+    cur.execute(start + s[:-1] + ';')
+    conn.commit()
+    s=""
+    
+if False:
+    s = '''
+    with latest as (select max(id) m, var_id, period_id from sm_hh_variable_vals group by var_id, period_id)
+    , remove as (select v.id from sm_hh_variable_vals v inner join latest on v.var_id=latest.var_id and v.period_id=latest.period_id 
+    where v.id<latest.m 
+    order by latest.var_id, latest.period_id)
+    delete from sm_hh_variable_vals where id in (select id from remove)
+    '''
+    print(loadDataFromDb(s, returndf=True))
+
+
+if True:
+    s = '''
+    with periods as (select * from sm_periods where local_date between '2020-08-01' and '2020-10-01' )
+    , quantities1 as (select period_id, quantity 
+    from sm_quantity
+    inner join sm_accounts on sm_quantity.account_id=sm_accounts.account_id
+    where session_id='39b76afc-118d-40e1-8368-c395fa0926e4' and type_id=0 and active='1')
+    , quantities2 as (select period_id, quantity from sm_quantity
+    inner join sm_accounts on sm_quantity.account_id=sm_accounts.account_id
+    where session_id='39b76afc-118d-40e1-8368-c395fa0926e4' and type_id=2 and active='1')
+    , fulldata as
+    (select periods.*, coalesce(quantities1.quantity,0) as import, coalesce(quantities2.quantity, 0) as export
+    from periods inner join quantities2 on periods.period_id=quantities2.period_id
+    left outer join quantities1 on periods.period_id=quantities1.period_id)
+
+    select date_trunc('month',local_date) as month, count(period_id) as numperiods,
+    sum(import) as total_import,
+    sum(export) as total_export
+    from fulldata group by month order by month
+    '''
+    import time
+    a = time.time()
+    #print(loadDataFromDb(s, returndf=True))
+    print(time.time()-a)
+
+
+
+    s = '''
+    with periods as (select * from sm_periods where local_date between '2020-08-01' and '2020-10-01' )
+    , quantities1 as (select period_id, quantity 
+    from sm_quantity
+    inner join sm_accounts on sm_quantity.account_id=sm_accounts.account_id
+    where session_id='39b76afc-118d-40e1-8368-c395fa0926e4' and type_id=0 and active='1')
+    , quantities2 as (select period_id, quantity from sm_quantity
+    inner join sm_accounts on sm_quantity.account_id=sm_accounts.account_id
+    where session_id='39b76afc-118d-40e1-8368-c395fa0926e4' and type_id=2 and active='1')
+    , full1 as 
+     (select periods.*, quantities1.quantity 
+    from periods inner join quantities1 on periods.period_id=quantities1.period_id)
+    , full2 as 
+     (select periods.*, quantities2.quantity
+    from periods inner join quantities2 on periods.period_id=quantities2.period_id)
+    , fulldata as
+    (select full2.*, coalesce(full1.quantity,0) as import, full2.quantity as export
+    from full2 full outer join full1 on full2.period_id=full1.period_id)
+
+    select date_trunc('month',local_date) as month, count(period_id) as numperiods,
+    sum(import) as total_import,
+    sum(export) as total_export
+    from fulldata group by month order by month
+    '''
+
+    import time
+    a = time.time()
+    print(loadDataFromDb(s, returndf=True))
+    print(time.time()-a)

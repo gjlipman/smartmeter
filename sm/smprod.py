@@ -98,7 +98,7 @@ def otherPage(request):
     <UL>
     <LI><A HREF="{url.replace('other', 'info')}">More Information about this site</A></LI>
     <LI><A HREF="{url.replace('other', 'gastracker')}">Octopus Gas Tracker Prices</A></LI>
-    <LI><A HREF="{url.replace('other', 'electracker')}">Octopus Gas Tracker Prices</A></LI>
+    <LI><A HREF="{url.replace('other', 'electracker')}">Octopus Electricity Tracker Prices</A></LI>
     <LI><A HREF="{url.replace('other', 'octobill')}">Octopus Balance Reconiliation</A></LI>
     <LI><A HREF="{url.replace('other','logpage')}">Log Page</A></LI>
     <LI><A HREF="{url.replace('other','checks')}">Market Data Checks</A></LI>

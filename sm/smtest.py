@@ -336,7 +336,7 @@ def savetocsv(request, type_id):
         start = '2019/01/01'
     end = request.POST.get('enddate')    
     if end in ['yyyy/mm/dd','']:
-        end = '2020/09/01'
+        end = '2021/04/01'
 
     if option[:2]=='hh':
         cols = {'q': ', quantity ', 'p': ', price', 'q_p': ', quantity, price '}[option[3:]]

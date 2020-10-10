@@ -91,7 +91,7 @@ def runsql(request):
 def bot_to_reject(request):
     bots = ['SemrushBot', 'AhrefsBot']
     for bot in bots:
-        if bot in request.GET.get('HTTP_USER_AGENT',''):
+        if bot in request.META.get('HTTP_USER_AGENT',''):
             return True
     return False
 

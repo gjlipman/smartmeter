@@ -595,20 +595,25 @@ def netimportPage(request):
     with periods as (select * from sm_periods where local_date between '{start}' and '{end}' )
     , quantities1 as ({quantitystr(smid, 0)})
     , quantities2 as ({quantitystr(smid, 2)})
-    , fulldata as 
-        (select periods.*, coalesce(quantities1.quantity,0) as import, coalesce(quantities2.quantity, 0) as export 
-        from periods inner join quantities2 on periods.period_id=quantities2.period_id
-        left outer join quantities1 on periods.period_id=quantities1.period_id)
+    , full1 as 
+     (select periods.*, quantities1.quantity 
+    from periods inner join quantities1 on periods.period_id=quantities1.period_id)
+    , full2 as 
+     (select periods.*, quantities2.quantity
+    from periods inner join quantities2 on periods.period_id=quantities2.period_id)
+    , fulldata as
+    (select full2.*, coalesce(full1.quantity,0) as import, coalesce(full2.quantity,0) as export
+    from full2 left outer join full1 on full2.period_id=full1.period_id)
         {endstr}
     ''' 
-
+    #raise Exception(s)
     data = loadDataFromDb(s, returndf=True)
     url = request.get_full_path()
     
     if data.shape[0]==0:
         return nodata(request)
  
-
+    #raise Exception(request.GET)
     if 'month' in request.GET:
         month = request.GET.get('month')
         if 'day' in request.GET:
@@ -662,7 +667,7 @@ def netimportPage(request):
             table += t.format(adj_url(url, [],[('month',j.month.strftime('%Y-%m'))]),
                                 j.month.strftime('%b %Y'), j.total_import, j.total_export, j.total_import-j.total_export)
         table += '</TABLE>'  
-
+    #raise Exception
     if 'chartscale' in request.GET:
         c = request.GET.get('chartscale').split(',')
         chartscale = f'min: {c[0]}, '
