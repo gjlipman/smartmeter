@@ -265,7 +265,7 @@ def costPage(request, choice):
     prefix = ['','gas','export'][type_id]
     smid = get_sm_id(request)
     vat = 1 if type_id==2 else 1.05
-    isfixed, pricestr = parsetariff(request, request.GET.get(prefix+'tariff'), vat)
+    isfixed, pricestr = parsetariff(request, request.GET.get(prefix+'tariff'), type_id, vat)
     start = request.GET.get('start', '2018-01-01')
     end = request.GET.get('end','2025-01-01')   
     if 'month' in request.GET:

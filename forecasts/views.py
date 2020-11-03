@@ -4,6 +4,7 @@ import os
 import sys
 import pandas as pd
 import numpy as np
+import json
 from myutils.utils import getConnection, loadDataFromDb
 
 
@@ -67,7 +68,17 @@ def inner(request):
         retail = f"The prices are essentially estimates of the day ahead hourly auction results in p/kwh, converted into retail prices for region {region} by multiplying by {multiplier}, and adding {adder} from 4-7pm. Prices include 5% VAT."
         retail = retail.format(region, multiplier, adder)
         retail2 = f"Estimates of Octopus retail prices for region {region} in p/kwh"
-        
+
+    if 'json' in request.GET:
+        myobj = []
+        for _, j in data.iterrows():
+            myobj.append({'datetime': j['datetime'].strftime('%Y-%m-%dT%H:%M'),
+                          'demand': j['demand']/1000,
+                          'solar': j['solar']/1000,
+                          'wind': j['wind']/1000,
+                          'price': j['price'] })
+        return json.dumps(myobj)
+
     kwargs = {'asof': data['created_on'].iloc[-1].isoformat()[:16],
             'datetimes': str([d['datetime'].strftime('%a %Hh') for _, d in data.iterrows()]),
             'demand': str(['{:.2f}'.format(d['demand']/1000) for _, d in data.iterrows()]),

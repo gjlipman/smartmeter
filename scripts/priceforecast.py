@@ -25,7 +25,11 @@ try:
         data = pd.read_csv(StringIO(r), 
                         header=None, 
                         skiprows=5)
-        data = data[data[2]=='Solar']
+        try:
+            data = data[data[2]=='Solar']
+        except Exception as e:
+            raise Exception(r)
+
         datalist.append(data[[3,4,5]])
         
     data = pd.concat(datalist)
@@ -74,6 +78,7 @@ try:
     demand.reset_index(inplace=True)
     demand['grossdemand'] = demand['demand']+demand['solar']
     demand.interpolate(inplace=True)
+    demand = demand[demand.time<24]
 
 
     # Gets wind forecasts
@@ -116,6 +121,7 @@ try:
     data2.loc[i,'peakMW'] = min(x)
         
     data = pd.concat([data1, data2.iloc[1:]], ignore_index=True, sort=False)
+    data = data[data['time']<24]
     temp = data['date'].astype(str) + 'T' + data['time'].astype(str)
     temp = [datetime.datetime.strptime(x, '%Y%m%d.0T%H.0') for x in temp.values]
     data = pd.Series(data.peakMW.values, index=temp)
@@ -127,7 +133,7 @@ try:
     data= pd.DataFrame(index=d2.index)
     data['grossdemand'] = np.hstack([demand.grossdemand.values[24:],demand.grossdemand.values[:24]])
     data['wind'] = d2.values
-    data['fullsolar'] = fullsolar.values.tolist()*7
+    data['fullsolar'] = fullsolar[:24].values.tolist()*7
 
 
 

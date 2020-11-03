@@ -46,6 +46,8 @@ def loadfromdbremote(sqlstr, returndf=False):
     if sqlstr[-1]!=';':
         sqlstr += ';'
     r = requests.post(url, data={'password': password, 'sqlquery': sqlstr})
+    if '504 Gateway' in r.text:
+        r = requests.post(url, data={'password': password, 'sqlquery': sqlstr})
     try:
         output = json.loads(r.text)
     except Exception:

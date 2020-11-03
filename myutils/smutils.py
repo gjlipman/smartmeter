@@ -192,7 +192,7 @@ def octopusmeters(key, getprices=False):
                             lateststartdate = r2['results'][0]['interval_start']
                             tariff = latesttariff(i)
                             if commod=='electricity':
-                                if 'OUTGOING' in tariff:
+                                if 'OUTGOING' in tariff.replace('EXPORT','OUTGOING'):
                                     type_id=2
                                 else:
                                     type_id=0
@@ -252,9 +252,9 @@ def octopusconsumption(key, type_id, first=None, last=None):
                         if len(j['serial_number'])>0:
                             meters.append([i['mpan'], j['serial_number'], latesttariff(i)])                
         if type_id==0:
-            meters = [e for e in meters if 'OUTGOING' not in e[2]]   
+            meters = [e for e in meters if 'OUTGOING' not in e[2].replace('EXPORT','OUTGOING')]   
         elif type_id==2:
-            meters = [e for e in meters if 'OUTGOING' in e[2]]   
+            meters = [e for e in meters if 'OUTGOING' in e[2].replace('EXPORT','OUTGOING')]   
         for e in meters:
             dfs = octopusconsumptionformpan(key, e[0], e[1], 'electricity')
             if dfs is not None:
@@ -341,6 +341,7 @@ def getDataFromN3RGY(key, type_id, n3adj, first=None, last=None):
 
     df = df.merge(right=dfs, on='timestamp', how='left')
     
+    
     test = df[df.timestamp>pd.Timestamp(daterange[0])]
     test[test.value.isna()]
     test = test[test.value.isna()]
@@ -348,6 +349,9 @@ def getDataFromN3RGY(key, type_id, n3adj, first=None, last=None):
         print('Missing records: {}'.format(test.timestamp.tolist() ))
     
     df = df[df.value.notna()]
+    #the following line overcomes an issue with error hex:  
+    #https://github.com/n3rgy/data/issues/1
+    df = df[df.value<16700.215]
     return df
 
 
@@ -444,7 +448,7 @@ def quantitystr(smid, type_id):
             inner join sm_accounts on sm_quantity.account_id=sm_accounts.account_id  
                 where session_id='{smid}' and type_id={type_id} and active='1'"""
 
-def parsetariff(request, tariff, vat, **kwargs):
+def parsetariff(request, tariff, type_id, vat, **kwargs):
     isfixed = tariff.replace(',','').replace(':','').replace('-','').replace('.','').isnumeric()
     if isfixed:
         t = tariff.split(',')
@@ -466,7 +470,7 @@ def parsetariff(request, tariff, vat, **kwargs):
         return isfixed, pricestr
     else:
         region = kwargs.get('region', None) or request.GET.get('region')
-        s = f"select var_id, granularity_id from sm_variables where product='{tariff}' and region='{region}'"
+        s = f"select var_id, granularity_id from sm_variables where product='{tariff}' and region='{region}' and type_id={type_id}"
         s = loadDataFromDb(s)
         if len(s):
             var_id = s[0][0]

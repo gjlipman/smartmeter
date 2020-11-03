@@ -59,7 +59,10 @@ try:
                 'dates': dates} 
         r = load_bmrs_data(**kwargs)
         data = pd.read_csv(StringIO(r), header=None, skiprows=1)
-        data = data[data[5].isnull()==0]
+        try:
+            data = data[data[5].isnull()==0]
+        except Exception as e:
+            raise Exception(data)
         datalist.append(data)
     data = pd.concat(datalist)
     data1 = data[[1,2,6]].copy()

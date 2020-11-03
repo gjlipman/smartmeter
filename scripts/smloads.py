@@ -195,7 +195,9 @@ try:
         dfs.loc[pd.Timestamp(dfs.valid_to[-1][:16])] = dfs.iloc[-1]
         dfs = dfs.iloc[1:]
         dfs = dfs['value_exc_vat']
+        dfs.drop_duplicates(keep='last',inplace=True)
         dfs = dfs.resample('30T').ffill()
+
         dfs = dfs.iloc[:-1].copy()               
         dfs = pd.merge(left=df, right=dfs, left_on='timestamp', right_index=True, how='left')
         dfs = dfs[dfs.value_exc_vat.notna()]

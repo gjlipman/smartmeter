@@ -66,7 +66,7 @@ def calculatebill(choice, request):
     if tariff=='Fixed':
         tariff = request.POST.get('price')
 
-    isfixed, pricestr = parsetariff(request, tariff, vat, region=request.POST.get('region',None)) 
+    isfixed, pricestr = parsetariff(request, tariff, type_id, vat, region=request.POST.get('region',None)) 
     qstr = quantitystr(smid, type_id)
     
     endstr = f"""
@@ -321,7 +321,7 @@ def savetocsv(request, type_id):
         region = request.POST.get('region', None)
         if tariff=='Fixed':
             tariff = request.POST.get('price')
-        isfixed, pricestr = parsetariff(request, tariff, vat, region=region) 
+        isfixed, pricestr = parsetariff(request, tariff, type_id, vat, region=region) 
     else:
         pricestr = 'select period_id, 1 as value from periods'
 
@@ -788,7 +788,9 @@ def calccomparison(request, choice, tariffs):
     
     calcs = []
     for t in tariffs:
-        isfixed, pricestr = parsetariff(request, t, vat, region=region)
+        isfixed, pricestr = parsetariff(request, t, type_id, vat, region=region)
+        if t=='SSILVER-2017-1':
+            raise Exception(pricestr)
         endstr = f"""
             select date_trunc('month',local_date) as month, count(period_id) as numperiods, 
             sum(value)/count(value) as price, sum(quantity) as total_quantity, sum(quantity*value) as total_cost  
@@ -946,14 +948,14 @@ def analysisPage(request):
     smid = get_sm_id(request)
     if request.method=='GET':
         start = request.GET.get('start', '2020/01/01')
-        end = request.GET.get('end','2020/07/31') 
+        end = request.GET.get('end','2021/03/31') 
     else:
         start = request.POST.get('startdate')
         end = request.POST.get('enddate')
 
 
     region = request.GET.get('region','C')
-    _, pricestr = parsetariff(request, 'AGILE-18-02-21', 1.05, region=region)
+    _, pricestr = parsetariff(request, 'AGILE-18-02-21', 0, 1.05, region=region)
 
     endstr = f"""
     select period, date_trunc('month', local_date) as month, local_date, local_time, actual_qty, prof_qty, price 
