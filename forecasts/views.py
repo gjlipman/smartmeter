@@ -40,8 +40,9 @@ def inner(request):
     order by dt
     '''
     df2 = loadDataFromDb(s, returndf=True)
+    #raise Exception(df2.iloc[40:60])
     df2 = pd.Series(0.5*(df2['value'].iloc[0::2].values + df2['value'].iloc[1::2].values), index=df2['dt'].iloc[0::2])
-
+    
     if region=='W':
         df2 = df2 - np.where(df2.index.str[-5:-3].isin(['16','17','18']), 12, 0)
         df2 = df2*10/2
@@ -69,6 +70,13 @@ def inner(request):
         retail = retail.format(region, multiplier, adder)
         retail2 = f"Estimates of Octopus retail prices for region {region} in p/kwh"
 
+    url = request.get_full_path()
+    if 'before' not in url:
+        if "?" in url:
+            url = url + '&before=2020-12-31T12:00'
+        else:
+            url = url + '?before=2020-12-31T12:00'
+        retail += '''<P>If you want to know how historic forecasts performed, you can see the latest forecast before a past datetime, eg {url}</P>'''
     if 'json' in request.GET:
         myobj = []
         for _, j in data.iterrows():

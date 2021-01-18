@@ -36,7 +36,7 @@ def checkRequest(request):
             u = adj_url(url, [], [('tariff', '15')])
             return redirect(u)
 
-    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'electracker', 'other','memory','octobill']:
+    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'electracker', 'other','memory','octobill','octoaccount','customprofile']:
         return choice
 
     type_id, type_label = get_type_id(choice)   
@@ -102,6 +102,9 @@ def otherPage(request):
     <LI><A HREF="{url.replace('other', 'octobill')}">Octopus Balance Reconiliation</A></LI>
     <LI><A HREF="{url.replace('other','logpage')}">Log Page</A></LI>
     <LI><A HREF="{url.replace('other','checks')}">Market Data Checks</A></LI>
+    <LI><A HREF="{url.replace('other','octoaccount')}">Octopus Account Details</A></LI>
+    <LI><A HREF="{url.replace('other','customprofile')}">Custom Profile Builder</A></LI>
+
     </UL></P>
     <P>The following are links to other pages that you might find useful:
     <UL>
@@ -375,8 +378,8 @@ def adminPage(request):
                 else:
                     s += f'Unknown error connecting to your account: {df[1]}. ' 
             elif df.shape[0]==0:
-                s += '''
-                    <P><B>We connected to your Octopus account, but couldn't find any meters with consumption data</B>. Please get in touch with 
+                s += f'''
+                    <P><B>We connected to your Octopus account, but couldn't find any meters with consumption data</B>. You can see the full information Octopus has for your meters on <A HREF="{url.replace('other','octoaccount')}">Octopus Account Details</A>. Feel free to get in touch with 
                     me so I can investigate. 
                     '''
             else:
@@ -392,7 +395,7 @@ def adminPage(request):
                         s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD><TD>{j.tariff[5:-2]}</TD><TD>{j.tariff[-1]}</TD></TR>"
                     s += '</TABLE>'                    
 
-                s += '<P>Please let me know if you have additional meters that you think I should be picking up.</P> '
+                s += f'''<P>You can see the full information Octopus has for your meters on <A HREF="{url.replace('other','octoaccount')}">Octopus Account Details</A>. Please let me know if you have additional meters that you think I should be picking up.</P> '''
 
                 s += '''
                         <P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates

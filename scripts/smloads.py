@@ -42,7 +42,7 @@ try:
     latest = data[4]
     var_id = data[0]
 
-    idx = pd.date_range(START, '202101010000', freq='30T')  
+    idx = pd.date_range(START, '202107010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
@@ -156,7 +156,7 @@ except Exception as err:
 
 
 try:
-    idx = pd.date_range(START, '202101010000', freq='30T')  
+    idx = pd.date_range(START, '202107010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
@@ -177,28 +177,34 @@ try:
             continue 
 
         start = j.period.replace(' ','T')
-        end = '2021-01-01T00:00'
+        end = '2021-07-01T00:00'
         url = ('https://api.octopus.energy/v1/products/{}/' + 
             'electricity-tariffs/E-1R-{}-{}/standard-unit-rates/' + 
                 '?period_from={}Z&period_to={}Z&page_size=15000')
   
         url = url.format(j['product'], j['product'], j.region, start, end)
         r = requests.get(url)
-
         r = r.json().get('results',[])
+
         if len(r)==0:
             continue
 
         dfs = pd.DataFrame(r)[['valid_from','valid_to','value_exc_vat']]
+
+        dfs.drop_duplicates(keep='last',inplace=True)
+
         dfs.index = pd.DatetimeIndex(dfs.valid_from.str[:16])
         dfs.sort_index(inplace=True)
         dfs.loc[pd.Timestamp(dfs.valid_to[-1][:16])] = dfs.iloc[-1]
-        dfs = dfs.iloc[1:]
         dfs = dfs['value_exc_vat']
-        dfs.drop_duplicates(keep='last',inplace=True)
+        
         dfs = dfs.resample('30T').ffill()
+        dfs = dfs[dfs.index>j.period]
 
-        dfs = dfs.iloc[:-1].copy()               
+
+
+        dfs = dfs.iloc[:-1].copy() 
+
         dfs = pd.merge(left=df, right=dfs, left_on='timestamp', right_index=True, how='left')
         dfs = dfs[dfs.value_exc_vat.notna()]
 

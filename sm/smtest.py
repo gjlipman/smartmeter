@@ -5,6 +5,8 @@ import sys
 import pandas as pd
 import numpy as np
 import datetime
+import requests
+import json
 
 from myutils.utils import (getConnection, loadDataFromDb )
 from myutils.smutils import (adj_url, sidebarhtml, getregions, get_sm_id, 
@@ -775,7 +777,7 @@ def calccomparison(request, choice, tariffs):
     region = request.POST.get('region')
     gasmult = request.POST.get('gasmult', '1.0')
     start = request.GET.get('start', '2019-01-01')
-    end = request.GET.get('end','2020-12-31')
+    end = request.GET.get('end','2021-12-31')
     end = min(end, datetime.datetime.today().strftime('%Y-%m-%d'))
     smid = get_sm_id(request)
     metric = request.POST.get('metric')
@@ -789,8 +791,6 @@ def calccomparison(request, choice, tariffs):
     calcs = []
     for t in tariffs:
         isfixed, pricestr = parsetariff(request, t, type_id, vat, region=region)
-        if t=='SSILVER-2017-1':
-            raise Exception(pricestr)
         endstr = f"""
             select date_trunc('month',local_date) as month, count(period_id) as numperiods, 
             sum(value)/count(value) as price, sum(quantity) as total_quantity, sum(quantity*value) as total_cost  
@@ -1282,3 +1282,330 @@ def octobillPage(request):
             s += transactions[col].to_html(float_format='%.2f', index=False) + '<BR>'
 
     return create_sm_page(request, s, 'Octopus Balance Reconciliation')
+
+
+def accountgraphql(key):
+    url = 'https://api.octopus.energy/v1/graphql/'
+
+    query = """
+        mutation APIKeyAuthentication($apiKey: String!) {
+        apiKeyAuthentication(apiKey: $apiKey) {
+            token,
+        }
+        }
+    """
+    variables = {'apiKey': key[10:]}
+
+    r = requests.post(url, json={'query': query, 'variables': variables}, )
+    headers = {'Authorization': r.json()['data']['apiKeyAuthentication']['token']}
+
+    query = """
+    query account {
+    account(accountNumber: "$accountNumber" ) {
+            properties {
+            id
+            }
+    }
+    }"""
+    r = requests.post(url, json={'query': query.replace('$accountNumber',key[:10])}, headers=headers)
+    r = r.json()
+
+
+    query = """
+        query account {
+        property(id: $id) {
+        id,
+        address,
+        electricityMeterPoints {
+        mpan,
+        status,
+        gspGroupId,
+        profileClass,
+        meters{
+            serialNumber,
+            makeAndType,
+            activeFrom,
+            activeTo,
+            meterType,
+            consumptionUnits
+            }
+        }
+        gasMeterPoints {
+        mprn,
+        status,
+        meters{
+            serialNumber,
+            activeFrom,
+            activeTo,
+            meterType,
+            units,
+            imperial,
+            consumptionUnits
+        }
+        }
+    }
+    }
+    """
+    id = r['data']['account']['properties'][0]['id']
+    r = requests.post(url, json={'query': query.replace('$id', id)}, headers=headers)
+    s = '<PRE>' + json.dumps(r.json(), indent=4) + '</PRE>'
+    return s
+
+def octoaccountpage(request):
+    key = request.GET.get('octopus')
+    s = """
+    <P>This website tries to pull in the relevant information from Octopus, although it sometimes has problems when people have multiple 
+    meters with weird histories. This page displays some information about all the meters linked to the account that may be useful for debugging issues.</P>"""
+
+    s += """
+    <P>This first section is information from Octopus's GraphQL API:</P>"""
+
+    s += accountgraphql(key)
+
+    s += """
+    <BR><P>This next section is information from Octopus's main API:</P>"""
+    url =   'https://api.octopus.energy/v1/accounts/' + key[:10]
+    r = requests.get(url, auth=(key[10:],''))   
+    if r.status_code!=200:
+        s +=  r.status_code + r.json()['detail']
+    else:
+        s += '<PRE>' + json.dumps(r.json(), indent=4) + '</PRE>'
+
+    return create_sm_page(request, s, 'Octopus Account Details')
+
+def calcprofileprice(request, options):
+    output = '<H3>Go Prices</H3><P><TABLE><TR><TH>Tariff</TH><TH>Price</TH><TH>Calculated Avg (p/kWh)</TH></TR>'
+    region = request.POST.get('region', '')
+    if region == '':
+        return "<P><B>Please select your region.</B></P>"
+    p2 = {'A': 14.1225,'B': 13.4505, 'C': 14.7105, 'D': 14.6265, 'E': 13.7235, 'F': 12.9255, 
+          'G': 13.965, 'H': 13.797, 'J': 14.3955, 'K': 14.0175, 'L': 14.2905, 'M': 13.314,
+          'N': 14.1855, 'P': 14.4585}
+    p2 = p2[region]
+    go_versions = [ ['GO-3H-2030',f'2030-2330:4.5,{p2}'],
+                    ['GO-3H-2130',f'2130-0030:4.5,{p2}'],
+                    ['GO-3H-2230',f'2230-0130:4.5,{p2}'],
+                    ['GO-3H-2330',f'2330-0230:4.5,{p2}'],
+                    ['GO-3H-0030',f'0030-0330:4.5,{p2}'],
+                    ['GO-3H-0130',f'0130-0430:4.5,{p2}'],
+                    ['GO-3H-0230',f'0230-0530:4.5,{p2}'],
+                    ['GO-3H-0330',f'0330-0630:4.5,{p2}'],
+                    ['GO-4H-2030',f'2030-0030:5,{p2}'],
+                    ['GO-4H-2130',f'2130-0130:5,{p2}'],
+                    ['GO-4H-2230',f'2230-0230:5,{p2}'],
+                    ['GO-4H-2330',f'2330-0330:5,{p2}'],
+                    ['GO-4H-0030',f'0030-0430:5,{p2}'],
+                    ['GO-4H-0130',f'0130-0530:5,{p2}'],
+                    ['GO-4H-0230',f'0230-0630:5,{p2}'],
+                    ['GO-5H-2030',f'2030-0130:5.5,{p2}'],
+                    ['GO-5H-2130',f'2130-0230:5.5,{p2}'],
+                    ['GO-5H-2230',f'2230-0330:5.5,{p2}'],
+                    ['GO-5H-2330',f'2330-0430:5.5,{p2}'],
+                    ['GO-5H-0030',f'0030-0530:5.5,{p2}'],
+                    ['GO-5H-0130',f'0130-0630:5.5,{p2}'],
+                    ] 
+    periods = np.asarray(sorted([f'{i:02}00' for i in range(24)] + [f'{i:02}30' for i in range(24)]))
+    for tariff in go_versions:
+        t = tariff[1].split(',')
+        prices = np.asarray([float(t[-1])]*48)
+        for opt in t[:-1]:
+            [s, p] = opt.split(':')
+            [s, e] = s.split('-')    
+            if s<e:
+                prices = np.where((periods>=s)&(periods<e),float(p), prices)
+            else:
+                prices = np.where((periods>=s)|(periods<e),float(p), prices)
+        volume, cost = 0, 0
+        for i, o in enumerate(options[0]):
+            if float(o)>0:
+                [s, e] = options[3][i].replace(":","").split('-')
+                if s<e:
+                    p = prices[(periods>=s)&(periods<e)]
+                else:
+                    p = prices[(periods>=s)|(periods<e)]
+                p = np.asarray(sorted(p))   
+                numperiods = int(np.ceil(float(options[1][i])*2))
+
+                price = np.array(p[:numperiods]).mean()
+                volume += float(o)
+                cost += float(o)*price
+        if volume==0:
+            return "<P><B>Please enter a non-zero kWh quantity in at least one of the rows.</B></P>"
+        output += f'<TR><TD>{tariff[0]}</TD><TD>{tariff[1]}</TD><TD>{cost/volume:.2f}</TD></TR>'
+
+    output += '</TABLE>'
+
+    q = f"select var_id, granularity_id from sm_variables where product='AGILE-18-02-21' and region='{region}'"
+    q = loadDataFromDb(q)
+    if len(s):
+        var_id = q[0][0]
+    else:
+        raise Exception("No data for tariff {} and region {}".format('AGILE-18-02-21', region))
+
+    q = f"""select p.period_id, p.local_date, p.local_time, value from sm_hh_variable_vals v
+        inner join sm_periods p on v.period_id=p.period_id
+        where v.var_id={var_id} and p.local_date>='2020-06-01' and p.local_date<'2021-01-04'"""
+    df = loadDataFromDb(q, returndf=True)
+    df['week'] = ((df.local_date-datetime.date.fromisoformat('2020-06-01'))/datetime.timedelta(days=1)/7).astype(int)
+    df = df.sort_values('period_id')
+
+    df2 = df.groupby(['week','local_date','local_time']).mean()['value']
+    df2 = df2.unstack('local_time').fillna(5.0)
+    df3 = pd.DataFrame(0.0, index=df2.index, columns=['volume','cost'])
+    for ix in df3.index:
+        prices = df2.loc[ix].values
+        for i, o in enumerate(options[0]):
+            if float(o)>0:
+                [s, e] = options[3][i].replace(":","").split('-')
+
+                if s<e:
+                    p = prices[(periods>=s)&(periods<e)]
+                else:
+                    p = prices[(periods>=s)|(periods<e)]
+                p = np.asarray(sorted(p))   
+
+                numperiods = int(np.ceil(float(options[1][i])*2))
+
+                price = np.array(p[:numperiods]).mean()
+
+                df3.loc[ix,'volume'] += float(o) 
+                df3.loc[ix,'cost'] += float(o)*price
+
+
+
+    df3['price'] = df3['cost']/df3['volume']
+    df3 = df3.reset_index()
+    df4 = df3.groupby(['week']).sum()
+    df4['price'] = df4['cost']/df4['volume']
+    df4['WeekBegin'] = df3.groupby(['week']).min()['local_date'].values
+    df4.sort_index(ascending=False, inplace=True)
+    
+    output += '</P><H3>Agile Prices</H3><P>'
+    output += df4[['WeekBegin','price']].to_html(index=False, float_format='%.2f')
+
+    return output
+
+
+def buildprofilePage(request):
+    options = [["0.0","0.0","0.0","0.0","0.0"],
+               ["24.0","1.0","0.5","0.5","0.5"],
+               [1,1,1,1,1],
+               ["00:00-24:00","00:00-07:00","07:00-20:00","16:00-19:00","19:00-22:00"]]
+
+    if request.method=='POST':
+        region = request.POST.get('region', None)
+        for i in range(len(options[0])):
+            options[0][i] = request.POST.get(f'inputkWh{i}')
+            options[1][i] = request.POST.get(f"inputnumh{i}")
+            options[2][i] = int(request.POST.get(f"constrainttype{i}"))
+            options[3][i] = request.POST.get(f"range{i}")
+        calcs = calcprofileprice(request, options)
+    else:
+        region = request.GET.get('region', None)   
+        calcs = ''
+
+
+
+    url = request.get_full_path()
+         
+    regionselector = getregionselector(region)
+
+
+
+
+
+    s = f"""
+
+        <form action="{url}" method="post">
+            <div class="form-group row" id="region" style="display:flex;">
+                    <label for="inputEmail3" class="col-sm-2 col-form-label">Region</label>
+                    <div class="col-sm-6">
+                        <select class="form-control" name="region">
+                        {regionselector}
+                        </select>
+                    </div>
+            </div>
+        
+            <div class="form-row">
+                <div class="form-group col-md-1">
+                <label for="inputkWh">kWh</label>"""
+
+    for i, o in enumerate(options[0]):
+        s += f"""<input type="text" class="form-control" name="inputkWh{i}" value="{o}">
+        """        
+
+    s += f"""   </div>
+                <div class="form-group col-md-1">
+                <label for="inputnumh">Over (hrs)</label>
+                """
+    for i, o in enumerate(options[1]):
+        s += f"""<input type="text" class="form-control" name="inputnumh{i}" value="{o}">
+           """
+
+    s += f"""   </div>
+
+                <div class="form-group col-md-4">
+                    <label for="inputtype">Type</label>
+                    """
+
+    for i, o in enumerate(options[2]):
+        s += f"""   <div class="col-sm-14">
+                        <select class="form-control" name="constrainttype{i}">
+                        <option value="1" {'selected="True"' if o==1 else ''} >Cheapest hrs/day between</option>
+
+                        </select>
+                    </div>
+                """
+    ignore = """
+                        <option value="2" {'selected="True"' if o==2 else ''}>Random hrs/day between</option>
+                        <option value="3" {'selected="True"' if o==3 else ''}>Cheapest continuous hrs/day between</option>
+                        """
+
+    s += f"""   </div>
+                <div class="form-group col-md-2" >
+                    <label for="inputRange">HH:MM-HH:MM</label>
+          """
+    for i, o in enumerate(options[3]):
+        s += f"""   <input type="text" class="form-control" name="range{i}" value="{o}">
+             """
+
+    s += """    </div>
+                </div>
+                <div class="form-group row">
+                <div class="col-sm-10">
+                    <button type="submit" class="btn btn-primary">Calculate</button>
+                </div>
+                </div>
+
+        </form>
+    """
+
+    s += calcs
+    s += """
+
+    <H3>Notes</H3>
+    <P>One of the common complaints of time-of-use tariff comparison tools is that your half-hourly consumption is likely to vary
+    depending on which tariff you are on. Unfortunately, there isn't any reliable way to tell from your consumption history how much you might
+    have moved consumption had prices been different.</P>
+    <P>This webpage instead starts from the ground up - it asks you to input your major forms of electricity consumption, specifying how much
+    flexibility you have. For example:
+    <UL><LI>You might use 3 kWh baseload, that is, evenly spread over the whole day (ie over the 24 cheapest hours)</LI>
+    <LI>You might have 20 kWh EV charging, that you want in the cheapest 5 hours between 00:00 and 07:00</LI>
+    <LI>You might have 2 kWh cooking, that you want in the cheapest 0.5 hour between 18:00 and 18:30 (ie no flexibility)</LI>
+    <LI>The period that the kWh quantity needs to be used over should be less than or equal the time range, otherwise it just assumes it is over the whole time range.</LI>
+    </UL>
+    </P>
+    <P>This then shows you what your average price would be under each of the Go-Faster variants, as well as for each week on Agile.</P>
+    <P>A few additional notes:
+    <UL><LI>At the moment the "over" period doesn't properly handle the case where it isn't a multiple of 0.5. </LI>
+    <LI>I haven't yet allowed it to handle consumption where you need it to happen in a continuous block. This is next on my list.</LI>
+    <LI>I also haven't yet allowed it to handle weekly consumption, for example if you want to use 20kWh but don't care when in the week it is used.
+    This reduces the cost if you are on Agile, but it is challenging to model as you need to either assume perfect knowledge of which half hours would
+    be cheapest, or make some other assumption.</LI>
+    <LI>When Agile prices go negative, customers can use extra electricity that they wouldn't have otherwise used, for example switching on the 
+    heater and opening the windows. While this can lower your average price per kWh, I'd argue that this lower cost doesn't reflect better value.
+    As a result, I'm not planning on incorporating consumption that you would only use if the price was below a certain price.</LI></UL>
+
+    """
+
+    return create_sm_page(request, s, 'Custom Profile Page')

@@ -54,7 +54,12 @@ def inner(request, choice):
     elif choice in ['octobill']:
         from .smtest import octobillPage
         output = octobillPage(request)
-        
+    elif choice in ['octoaccount']:
+        from .smtest import octoaccountpage
+        output = octoaccountpage(request)
+    elif choice in ['customprofile']:
+        from .smtest import buildprofilePage
+        output = buildprofilePage(request)
     elif choice in ['other']:
         output = otherPage(request)
     else:      

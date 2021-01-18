@@ -321,7 +321,7 @@ def costPage(request, choice):
                 gaswarn = '<BR><B>These results are based on a gas conversion of {}kwh per m3. This factor appears wrong.</B> It <A HREF="https://www.theenergyshop.com/guides/how-to-convert-gas-units-to-kwh" target="_blank"> should be around 11.18</A>, based on a volume correction factor of 1.02264, a calorific value of about 40, and dividing by the kwh to joule conversion of 3.6. Your latest bill should show the applicable conversions.'.format(gasmult)
     else: gaswarn = ''
 
-    data['price'] = np.where(data.total_quantity==0, data.price, data.total_cost/data.total_quantity)
+    data['price'] = np.where(data.total_quantity==0, data.price, data.total_cost/data.total_quantity).astype(float)
     data['total_cost'] *= vat
     data['price'] *= vat
 

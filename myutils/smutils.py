@@ -186,7 +186,7 @@ def octopusmeters(key, getprices=False):
                 for i in points:
                     for j in i['meters']:
                         url = f"https://api.octopus.energy/v1/{commod}-meter-points/{i[mpan]}/meters/{j['serial_number']}/consumption/"
-                        url += '?period_from=2019-01-01T00:00:00&period_to=2021-01-01T00:00:00&page_size=1'
+                        url += '?period_from=2019-01-01T00:00:00&period_to=2022-01-01T00:00:00&page_size=1'
                         r2 = requests.get(url, auth=(key[10:],'')).json()
                         if len(r2.get('results', [])):
                             lateststartdate = r2['results'][0]['interval_start']
@@ -219,7 +219,7 @@ def octopusmeters(key, getprices=False):
 def octopusconsumptionformpan(key, mpan, meter, type):
     import numpy as np
     dfs = []
-    url = 'https://api.octopus.energy/v1/{}-meter-points/{}/meters/{}/consumption/?period_from=2019-01-01T00:00:00&period_to=2021-01-01T00:00:00&page_size=10000'
+    url = 'https://api.octopus.energy/v1/{}-meter-points/{}/meters/{}/consumption/?period_from=2019-01-01T00:00:00&period_to=2022-01-01T00:00:00&page_size=10000'
     url = url.format(type, mpan, meter)
     r = requests.get(url, auth=(key[10:],''))
     if len(r.json().get('results',[])):
@@ -277,7 +277,7 @@ def octopusconsumption(key, type_id, first=None, last=None):
         return None, None
     
     region = e[2][-1]
-    idx = pd.date_range(START, '202101010000', freq='30T')  
+    idx = pd.date_range(START, '202201010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])

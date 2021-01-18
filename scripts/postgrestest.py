@@ -464,29 +464,33 @@ if False:
     print(loadDataFromDb(s, returndf=True))
 
 
-if False:
+
+if True:
     s = "insert into sm_hh_variables (var_name) Values ('Profile_1'), ('Profile_2');"
     #loadDataFromDb(s)
     # 
 
     for pc in [1,2]:
-        idx = pd.date_range(START, '202101010000', freq='30T')  
+        idx = pd.date_range(START, '202103312300', freq='30T')  
         df = pd.DataFrame()
         df['timestamp'] = idx
         df = pd.DataFrame(idx, columns=['timestamp'])
         df = df.iloc[:-1].copy()
-        f = '/home/django/django_project/Default_Period_Profile_Class_Coefficient_299.csv'
+        f = '/home/django/django_project/scripts/Default_Period_Profile_Class_Coefficient_299.csv'
         d = pd.read_csv(f)
         d.columns = ['class','d1','period','coeff']
         d = d[d['class']==pc]
 
         d['date'] = d.d1.str[6:] + d.d1.str[2:6] + d.d1.str[:2]
         d = d[d.date>=(START[:4] + '/' + START[4:6] + '/' + START[6:8])]
-        d = d[d.date<'2021/01/01']
 
+        #d = d[d.date<'2021/04/01']
+        d = d.iloc[:len(df)]
         assert(len(d)==len(df))
 
+
         df['coeff'] = d.coeff.tolist()
+        df = df[df.timestamp>='2021-01-01 00:00']
 
         s = "select var_id from sm_hh_variables where var_name='{}';".format('Profile_{}'.format(pc))
         var_id = loadDataFromDb(s)[0][0]
@@ -1310,7 +1314,7 @@ if False:
     print(loadDataFromDb(s, returndf=True))
 
 
-if True:
+if False:
     s = '''
     with periods as (select * from sm_periods where local_date between '2020-08-01' and '2020-10-01' )
     , quantities1 as (select period_id, quantity 
