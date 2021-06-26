@@ -131,7 +131,9 @@ try:
     d2 = d2.iloc[24:8*24]
 
     data= pd.DataFrame(index=d2.index)
-    data['grossdemand'] = np.hstack([demand.grossdemand.values[24:],demand.grossdemand.values[:24]])
+    demand = np.hstack([demand.grossdemand.values[-144:],demand.grossdemand.values[:24]])
+
+    data['grossdemand'] = demand
     data['wind'] = d2.values
     data['fullsolar'] = fullsolar[:24].values.tolist()*7
 

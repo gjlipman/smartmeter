@@ -465,24 +465,26 @@ if False:
 
 
 
-if True:
+if False:
     s = "insert into sm_hh_variables (var_name) Values ('Profile_1'), ('Profile_2');"
     #loadDataFromDb(s)
     # 
 
     for pc in [1,2]:
-        idx = pd.date_range(START, '202103312300', freq='30T')  
+        idx = pd.date_range(START, '202203312300', freq='30T')  
         df = pd.DataFrame()
         df['timestamp'] = idx
         df = pd.DataFrame(idx, columns=['timestamp'])
         df = df.iloc[:-1].copy()
-        f = '/home/django/django_project/scripts/Default_Period_Profile_Class_Coefficient_299.csv'
+        f = '/home/django/django_project/scripts/Default_Period_Profile_Class_Coefficient_309.csv'
         d = pd.read_csv(f)
         d.columns = ['class','d1','period','coeff']
         d = d[d['class']==pc]
 
         d['date'] = d.d1.str[6:] + d.d1.str[2:6] + d.d1.str[:2]
         d = d[d.date>=(START[:4] + '/' + START[4:6] + '/' + START[6:8])]
+        df = df[df.timestamp>='2021-03-31 23:00']
+
 
         #d = d[d.date<'2021/04/01']
         d = d.iloc[:len(df)]
@@ -490,7 +492,7 @@ if True:
 
 
         df['coeff'] = d.coeff.tolist()
-        df = df[df.timestamp>='2021-01-01 00:00']
+
 
         s = "select var_id from sm_hh_variables where var_name='{}';".format('Profile_{}'.format(pc))
         var_id = loadDataFromDb(s)[0][0]
@@ -1272,9 +1274,9 @@ if False:
             print(loadDataFromDb(s) )       
 
 
-if False:
+if True:
     conn, cur = getConnection()
-    df_idx = pd.date_range(datetime.datetime(2019,1,1), datetime.datetime(2021,7,1), freq='30min')
+    df_idx = pd.date_range(datetime.datetime(2019,1,1), datetime.datetime(2022,7,1), freq='30min')
     df_idx_local = df_idx.tz_localize('UTC').tz_convert('Europe/London')
     df = pd.DataFrame(index=df_idx)
     df['period'] = df_idx.strftime('%Y-%m-%d %H:%M')
@@ -1282,7 +1284,7 @@ if False:
     df['local_time'] = df_idx_local.strftime('%H:%M')
     df['timezone_adj'] = df_idx_local.strftime('%z').str[0:3].astype(int)
     df.reset_index(inplace=True)
-    df = df.loc[30673:]
+    df = df.loc[43777:]
     print(df)
 
     start = """

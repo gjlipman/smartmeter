@@ -324,10 +324,13 @@ def savetocsv(request, type_id):
         if tariff=='Fixed':
             tariff = request.POST.get('price')
         isfixed, pricestr = parsetariff(request, tariff, type_id, vat, region=region) 
+    elif option in ['hh_e','hh_q_e','d_q_e']:
+        pricestr = """select period_id, value from sm_hh_variable_vals v
+                inner join sm_variables var on v.var_id=var.var_id and var.product='CO2_National' """
     else:
         pricestr = 'select period_id, 1 as value from periods'
 
-    if option in ['hh_q','hh_q_p', 'd_q', 'd_q_c']:
+    if option in ['hh_q','hh_q_p', 'd_q', 'd_q_c','hh_q_e','d_q_e']:
         qstr = quantitystr(smid, type_id)
         qstr2 = 'quantity, '
     else:
@@ -338,14 +341,15 @@ def savetocsv(request, type_id):
         start = '2019/01/01'
     end = request.POST.get('enddate')    
     if end in ['yyyy/mm/dd','']:
-        end = '2021/04/01'
+        end = '2022/07/01'
 
     if option[:2]=='hh':
-        cols = {'q': ', quantity ', 'p': ', price', 'q_p': ', quantity, price '}[option[3:]]
+        cols = {'q': ', quantity ', 'p': ', price', 'e': ', price', 'q_p': ', quantity, price ','q_e': ', quantity, price'}[option[3:]]
         endstr = f'select period, local_date, local_time, timezone_adj {cols}  from fulldata order by period'
     elif option[:2]=='d_':
         cols = {'q': ', sum(quantity) as quantity ', 'p': ', sum(quantity*price)/sum(quantity) as price', 
-                'q_c': ', sum(quantity) as quantity, sum(quantity*price) as cost '}[option[2:]]
+                'q_c': ', sum(quantity) as quantity, sum(quantity*price) as cost ',
+                'q_e': ', sum(quantity) as quantity, sum(quantity*price) as cost '}[option[2:]]
         endstr = f'''select local_date {cols}
                     from fulldata group by local_date order by local_date'''
 
@@ -363,11 +367,13 @@ def savetocsv(request, type_id):
 
     df = loadDataFromDb(s, returndf=True)
  
+    if option in ['hh_e','hh_q_e','d_q_e']:
+        df.rename(columns={'price': 'Carbon Intensity (g/kWh)', 'cost': 'Carbon Emissions (g)'}, inplace=True)
 
     if includevat:
         for col in ['price','cost']:
             if col in df.columns:
-                df[col]*=1.05
+                df[col]=df[col].astype(float)*1.05
 
     for col, dp in [('quantity', 3), ('price', 3), ('cost', 1)]:
         if col in df.columns:
@@ -377,7 +383,9 @@ def savetocsv(request, type_id):
     df.rename(columns={'period': 'Period_UTC', 'local_date': 'Date_local',
                         'local_time': 'StartTime_local', 'timezone_adj': 'Timezone_Adj',
                         'quantity': 'Quantity (kwh)'}, inplace=True)
-    
+
+
+
     if includevat:
         df.rename(columns={'price': 'Price (p/kwh incl VAT)', 'cost': 'Cost (p incl VAT)',
                         }, inplace=True)
@@ -412,8 +420,8 @@ def get_savecsvPage(choice, request):
         gasmultdisplay = 'flex' if type_id==1 else 'none'
         gasmult = request.GET.get('gasmult','1')
 
-        s = f"""
 
+        s = f"""
                 <form action="{url}" method="post">
                 <div class="form-group row" id="options">
                 <label for="inputEmail3" class="col-sm-2 col-form-label" >Options</label>
@@ -421,9 +429,12 @@ def get_savecsvPage(choice, request):
                 <select class="form-control" id="optionselect" name="option" select onchange="JavaScript: showForm1( this.value );">
                 <option value="hh_q">Half Hourly Quantity</option>
                 <option value="hh_p">Half Hourly Price</option>
+                <option value="hh_e">Half Hourly Carbon Intensity</option>
                 <option value="hh_q_p">Half Hourly Quantity and Price</option>
+                <option value="hh_q_e">Half Hourly Quantity and Carbon Intensity</option>
                 <option value="d_q">Daily Quantity</option>
                 <option value="d_q_c">Daily Quantity and Cost</option>
+                <option value="d_q_e">Daily Quantity and Emissions</option>
                 <option value="d_p">Daily Price</option>
                 </select>
                 </div>
@@ -504,7 +515,7 @@ def get_savecsvPage(choice, request):
             <script>
 
                 function showForm1( v ) {
-                    if( ['hh_q','d_q'].includes(v) )
+                    if( ['hh_q','d_q','hh_e','hh_q_e','d_q_e'].includes(v) )
                     {
                         document.getElementById( "tariffs" ).style.display = "none"; }
                     else {
@@ -777,7 +788,7 @@ def calccomparison(request, choice, tariffs):
     region = request.POST.get('region')
     gasmult = request.POST.get('gasmult', '1.0')
     start = request.GET.get('start', '2019-01-01')
-    end = request.GET.get('end','2021-12-31')
+    end = request.GET.get('end','2022-07-31')
     end = min(end, datetime.datetime.today().strftime('%Y-%m-%d'))
     smid = get_sm_id(request)
     metric = request.POST.get('metric')
@@ -948,7 +959,7 @@ def analysisPage(request):
     smid = get_sm_id(request)
     if request.method=='GET':
         start = request.GET.get('start', '2020/01/01')
-        end = request.GET.get('end','2021/03/31') 
+        end = request.GET.get('end','2022/03/31') 
     else:
         start = request.POST.get('startdate')
         end = request.POST.get('enddate')
@@ -976,6 +987,7 @@ def analysisPage(request):
         {endstr}
     '''   
     df = loadDataFromDb(s, returndf=True)
+    #raise Exception(s)
     df['price']*=1.05
     df['prof_qty']*= df.actual_qty.sum()/df.prof_qty.sum()
 
@@ -1232,7 +1244,7 @@ def octobillPage(request):
         end = request.POST.get('end')
     else:
         start = '2016/01/01'
-        end = '2020/12/31'
+        end = '2022/07/31'
 
     s += f"""
     <form action="{request.get_full_path()}" method="post">

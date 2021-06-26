@@ -136,9 +136,12 @@ def n3rgymeters(key, n3adj):
 
 
 def latesttariff(mp):
-    d = pd.DataFrame(mp['agreements'])
-    d = d.sort_values('valid_to', ascending=False).tariff_code.iloc[0]
-    return d
+    if len(mp['agreements']):
+        d = pd.DataFrame(mp['agreements'])
+        d = d.sort_values('valid_to', ascending=False).tariff_code.iloc[0]
+        return d
+    else:
+        return ''
 
 def gettariffdetails(tariff):
     register = tariff[:4]
@@ -186,19 +189,21 @@ def octopusmeters(key, getprices=False):
                 for i in points:
                     for j in i['meters']:
                         url = f"https://api.octopus.energy/v1/{commod}-meter-points/{i[mpan]}/meters/{j['serial_number']}/consumption/"
-                        url += '?period_from=2019-01-01T00:00:00&period_to=2022-01-01T00:00:00&page_size=1'
+                        url += '?period_from=2019-01-01T00:00:00&period_to=2022-07-01T00:00:00&page_size=1'
                         r2 = requests.get(url, auth=(key[10:],'')).json()
                         if len(r2.get('results', [])):
                             lateststartdate = r2['results'][0]['interval_start']
-                            tariff = latesttariff(i)
+                            tariff = latesttariff(i) 
                             if commod=='electricity':
-                                if 'OUTGOING' in tariff.replace('EXPORT','OUTGOING'):
+                                if i.get('is_export', False):
+                                    type_id=2
+                                elif 'OUTGOING' in tariff.replace('EXPORT','OUTGOING'):
                                     type_id=2
                                 else:
                                     type_id=0
                             elif commod=='gas':
                                 type_id=1
-                            if getprices:
+                            if getprices and (len(tariff)):
                                 p = gettariffdetails(tariff)
                             else:
                                 p = [tariff]
@@ -248,13 +253,18 @@ def octopusconsumption(key, type_id, first=None, last=None):
         for p in r.json()['properties']:
             if p['moved_out_at'] is None:
                 for i in p['electricity_meter_points']:
+                    is_export = i.get('is_export', False)
+                    if type_id==0 and is_export:
+                        continue 
+                    if type_id==2 and is_export==False:
+                        continue
                     for j in i['meters']:
                         if len(j['serial_number'])>0:
                             meters.append([i['mpan'], j['serial_number'], latesttariff(i)])                
         if type_id==0:
             meters = [e for e in meters if 'OUTGOING' not in e[2].replace('EXPORT','OUTGOING')]   
-        elif type_id==2:
-            meters = [e for e in meters if 'OUTGOING' in e[2].replace('EXPORT','OUTGOING')]   
+        #elif type_id==2:
+        #    meters = [e for e in meters if 'OUTGOING' in e[2].replace('EXPORT','OUTGOING')]   
         for e in meters:
             dfs = octopusconsumptionformpan(key, e[0], e[1], 'electricity')
             if dfs is not None:
@@ -275,8 +285,10 @@ def octopusconsumption(key, type_id, first=None, last=None):
     
     if dfs is None:
         return None, None
-    
-    region = e[2][-1]
+    if len(e[2]):
+        region = e[2][-1]
+    else:
+        region = ''
     idx = pd.date_range(START, '202201010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx

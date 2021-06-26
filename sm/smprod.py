@@ -379,7 +379,7 @@ def adminPage(request):
                     s += f'Unknown error connecting to your account: {df[1]}. ' 
             elif df.shape[0]==0:
                 s += f'''
-                    <P><B>We connected to your Octopus account, but couldn't find any meters with consumption data</B>. You can see the full information Octopus has for your meters on <A HREF="{url.replace('other','octoaccount')}">Octopus Account Details</A>. Feel free to get in touch with 
+                    <P><B>We connected to your Octopus account, but couldn't find any meters with consumption data</B>. You can see the full information Octopus has for your meters on <A HREF="{url.replace('admin','octoaccount')}">Octopus Account Details</A>. Feel free to get in touch with 
                     me so I can investigate. 
                     '''
             else:
@@ -392,10 +392,14 @@ def adminPage(request):
                 else:
                     s += '<TABLE><TR><TH>Type</TH><TH>MPAN</TH><TH>Meter</TH><TH>Last Time (UTC)</TH><TH>Tariff</TH><TH>Product</TH><TH>Region</TH></TR>'
                     for i, j in df.iterrows():
-                        s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD><TD>{j.tariff[5:-2]}</TD><TD>{j.tariff[-1]}</TD></TR>"
+                        s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD>"
+                        if len(j.tariff):
+                            s += f"<TD>{j.tariff[5:-2]}</TD><TD>{j.tariff[-1]}</TD></TR>"
+                        else:
+                            s += f"<TD></TD><TD></TD></TR>"
                     s += '</TABLE>'                    
 
-                s += f'''<P>You can see the full information Octopus has for your meters on <A HREF="{url.replace('other','octoaccount')}">Octopus Account Details</A>. Please let me know if you have additional meters that you think I should be picking up.</P> '''
+                s += f'''<P>You can see the full information Octopus has for your meters on <A HREF="{url.replace('admin','octoaccount')}">Octopus Account Details</A>. Please let me know if you have additional meters that you think I should be picking up.</P> '''
 
                 s += '''
                         <P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates

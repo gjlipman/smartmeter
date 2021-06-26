@@ -70,7 +70,7 @@ def inner(request):
         retail = retail.format(region, multiplier, adder)
         retail2 = f"Estimates of Octopus retail prices for region {region} in p/kwh"
 
-    url = request.get_full_path()
+    url = request.build_absolute_uri()
     if 'before' not in url:
         if "?" in url:
             url = url + '&before=2020-12-31T12:00'

@@ -42,7 +42,7 @@ try:
     latest = data[4]
     var_id = data[0]
 
-    idx = pd.date_range(START, '202107010000', freq='30T')  
+    idx = pd.date_range(START, '202207010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
@@ -86,6 +86,12 @@ except Exception as err:
 
 
 try:
+    t = (pd.Timestamp.now() - pd.offsets.Day(2)).strftime('%Y-%m-%d')
+    s = f"""
+    delete from sm_d_variable_vals where local_date>'{t}'
+    """
+    loadDataFromDb(s)
+
     s = """
     select sm_variables.var_id, product, region, max(sm_d_variable_vals.local_date) as latest_date 
     from sm_variables 
@@ -121,6 +127,8 @@ except Exception as err:
 
 
 try:
+
+
     s = """
     select sm_variables.var_id, product, region, max(sm_d_variable_vals.local_date) as latest_date 
     from sm_variables 
@@ -156,7 +164,7 @@ except Exception as err:
 
 
 try:
-    idx = pd.date_range(START, '202107010000', freq='30T')  
+    idx = pd.date_range(START, '202207010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
@@ -177,7 +185,7 @@ try:
             continue 
 
         start = j.period.replace(' ','T')
-        end = '2021-07-01T00:00'
+        end = '2022-07-01T00:00'
         url = ('https://api.octopus.energy/v1/products/{}/' + 
             'electricity-tariffs/E-1R-{}-{}/standard-unit-rates/' + 
                 '?period_from={}Z&period_to={}Z&page_size=15000')
