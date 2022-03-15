@@ -26,14 +26,20 @@ def getregionselector(region):
 
 def gettariffselector(type_id, tariff, price):
     if price is None:
-        if tariff.replace('.','').replace('-','').isnumeric():
-            price = float(tariff)
-            tariff = 'Fixed'
-        else:
+        if tariff in ['AGILE-18-02-21','SILVER-2017-1','AGILE-OUTGOING-19-05-13']:
             price = 0.0
+        else: 
+            price = tariff
+            tariff = 'Fixed'
+
+        #if tariff.replace('.','').replace('-','').isnumeric():
+        #    price = float(tariff)
+        #    tariff = 'Fixed'
+        #else:
+        #    price = 0.0
 
     if type_id == 0:
-        tariffs =   ['Fixed','AGILE-18-02-21', 'GO-18-06-12', 'SILVER-2017-1']    
+        tariffs =   ['Fixed','AGILE-18-02-21', 'SILVER-2017-1']    
     elif type_id == 2:
         tariffs = ['Fixed', 'AGILE-OUTGOING-19-05-13']
     else:
@@ -189,6 +195,7 @@ def billsPage(request, choice):
 
 
     regionselector = getregionselector(region)
+
     tariffselector, price, pricedisplay, regiondisplay = gettariffselector(type_id, tariff, price)
     VAT = ', incl VAT' if type_id in [0,1] else ''
 
@@ -196,8 +203,9 @@ def billsPage(request, choice):
 
     s = """
     <form action="{url}" method="post">
- 
+    <P>For time of use tariffs like Go, please select Fixed and specify the times and prices within the price input.</P>
     <div class="form-group row" id="electariff">
+    
     <label for="inputEmail3" class="col-sm-2 col-form-label" >Tariff</label>
     <div class="col-sm-10">
         <select class="form-control" id="tariffselect" name="tariff" select onchange="JavaScript: showForm2( this.value );">
@@ -207,7 +215,7 @@ def billsPage(request, choice):
     </div>
 
     <div class="form-group row" id="price" style="display:{pricedisplay};">
-    <label for="inputEmail3" class="col-sm-2 col-form-label">Price (p/kwh{VAT})</label>
+    <label for="inputEmail3" class="col-sm-2 col-form-label">Price (p/kwh{VAT}, can be in the format<BR>2330-0630:10,20.5)</label>
     <div class="col-sm-10">
       <input type="text" class="form-control" name="price" value="{price}">
     </div>
@@ -778,7 +786,8 @@ def gastrackerpage(request):
         df['Wholesale'] = (df['A']/1.05-7.12)/1.2
     else:
         df['Wholesale'] = (df['A']/1.05-1.13)/1.06
-    s = '<P>All prices are in p/kwh. Regional retail prices include VAT, wholesale prices do not include VAT.</P>'
+    s = '''<P>All prices are in p/kwh. Regional retail prices include VAT, wholesale prices do not include VAT. Note that the wholesale price will not 
+    be correct on days where the cap is applied.</P>'''
     s += df.to_html(float_format='%.3f').replace('Wholesale','Wholesale<BR>p/kwh')
     header = 'Electricity' if type_id==0 else 'Gas'
     return create_sm_page(request, s, f'Octopus {header} Tracker Prices')
@@ -863,10 +872,11 @@ def tariffcomparison(request, choice):
         tariffs = [tariff]
         
         if type_id==0:
-            for t in ['AGILE-18-02-21','GO-18-06-12','SILVER-2017-1']:
+            for t in ['AGILE-18-02-21','SILVER-2017-1']:
                 if tariff!=t:
                     tariffs.append(t)
             tariffs.append('14.469')
+            tariffs.append('0030-0430:5,25')
             tariffs.append('0000-0800:9.681,15.8445')
         elif type_id==1:
             if tariff!='SILVER-2017-1':
@@ -1358,6 +1368,8 @@ def accountgraphql(key):
     }
     }
     """
+    if r['data']['account'] is None:
+        return '<PRE> No data found</PRE>'
     id = r['data']['account']['properties'][0]['id']
     r = requests.post(url, json={'query': query.replace('$id', id)}, headers=headers)
     s = '<PRE>' + json.dumps(r.json(), indent=4) + '</PRE>'

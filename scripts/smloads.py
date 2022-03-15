@@ -13,8 +13,14 @@ errstr = ''
 def getintensity(dt):
     url = "https://api.carbonintensity.org.uk/intensity/"
     r = requests.get(url + dt + "/fw48h")
+    #print(url + dt + "/fw48h")
     j = r.json()['data']
-    return j[-1]['to'],  pd.DataFrame([x['intensity']['actual'] for x in j], index=[x['from'] for x in j])
+    if dt<'2021-12-27T11:00Z':
+        vals = [x['intensity']['actual'] if x['intensity']['actual'] is not None else x['intensity']['forecast']  for x in j ]
+    else:
+        vals = [x['intensity']['actual'] for x in j ]
+
+    return j[-1]['to'],  pd.DataFrame(vals, index=[x['from'] for x in j])
 
 
 try:
@@ -74,13 +80,14 @@ try:
     d = d.iloc[2:]
     d = df.merge(d, how='left', on='timestamp' )
     d = d[d.intensity.notna()]   
-
+    
     s = "insert into sm_hh_variable_vals (var_id, period_id, value) values "
     for i, j in d.iterrows():
         s+= " ({}, {}, {}),".format(var_id, i, j.intensity)
     s = s[:-1] + ';'
     loadDataFromDb(s)
 except Exception as err:  
+    errstr += 'Problem with carbon intensity import \n'
     errstr +=  str(err) 
     errstr += traceback.format_exc() + '\n'
 
@@ -104,7 +111,6 @@ try:
     for i, j in mins.iterrows():
         if j['product'] not in ['SILVER-2017-1']:
             continue 
-
         r = requests.get(f'https://octopus.energy/api/v1/tracker/E-1R-SILVER-2017-1-{j.region}/daily/past/90/1/')
         dates = [x['date'] for x in r.json()['periods']]
         prices = [x['unit_rate'] for x in r.json()['periods']]
@@ -122,6 +128,7 @@ try:
             s = s[:-1] + ';'
             loadDataFromDb(s)
 except Exception as err:  
+    errstr += 'Problem with tracker electricity price import \n'
     errstr +=  str(err) 
     errstr += traceback.format_exc() + '\n'
 
@@ -159,6 +166,7 @@ try:
             s = s[:-1] + ';'
             loadDataFromDb(s)
 except Exception as err:  
+    errstr += 'Problem with tracker gas price import \n'
     errstr +=  str(err) 
     errstr += traceback.format_exc() + '\n'
 
@@ -225,6 +233,7 @@ try:
             s = s[:-1] + ';'
             loadDataFromDb(s)        
 except Exception as err:  
+    errstr += 'Problem with Agile price import \n'
     errstr +=  str(err) 
     errstr += traceback.format_exc() + '\n'
 
@@ -239,6 +248,7 @@ try:
     '''
     loadDataFromDb(s)
 except Exception as err:  
+    errstr += 'Problem with deleting historical data \n'
     errstr +=  str(err) 
     errstr += traceback.format_exc() + '\n'
 

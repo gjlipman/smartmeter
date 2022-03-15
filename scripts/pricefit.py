@@ -15,7 +15,7 @@ try:
     t = datetime.datetime.today() - pd.offsets.Day(0)
 
     # Get day ahead prices
-    r = requests.get('https://www.nordpoolgroup.com/globalassets/marketdata-excel-files/n2ex-day-ahead-auction-prices_2020_hourly_gbp.xls')
+    r = requests.get('https://www.nordpoolgroup.com/globalassets/marketdata-excel-files/n2ex-day-ahead-auction-prices_2021_hourly_gbp.xls')
     a = pd.read_html(StringIO(r.text))[0]
     a.columns=['date','time1','time2','price']
     a = a[a.price.notna()].copy()

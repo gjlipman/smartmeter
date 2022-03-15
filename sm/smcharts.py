@@ -1,3 +1,4 @@
+from attr import has
 from django.http import HttpResponse, HttpRequest
 from django.shortcuts import render, redirect
 import os
@@ -266,6 +267,7 @@ def costPage(request, choice):
     smid = get_sm_id(request)
     vat = 1 if type_id==2 else 1.05
     isfixed, pricestr = parsetariff(request, request.GET.get(prefix+'tariff'), type_id, vat)
+    has_pricebands =  isfixed & (type_id==0) 
     start = request.GET.get('start', '2018-01-01')
     end = request.GET.get('end','2025-01-01')   
     if 'month' in request.GET:
@@ -279,17 +281,29 @@ def costPage(request, choice):
             value as price, quantity*value as total_cost 
             from fulldata order by period"""
         else:
-            endstr = f"""
-            select local_date as day, count(period_id) as numperiods, sum(quantity) as total_quantity, 
-            sum(value)/count(value) as price, sum(quantity*value) as total_cost  
-            from fulldata where date_trunc('month', local_date)='{month}-01'
-            group by local_date order by local_date"""
+            if has_pricebands:
+                endstr = f"""
+                select local_date as day, count(period_id) as numperiods, sum(quantity) as total_quantity, 
+                sum(value)/count(value) as price, sum(quantity*value) as total_cost  
+                from fulldata where date_trunc('month', local_date)='{month}-01'
+                group by local_date, value order by local_date"""
+            else:
+                endstr = f"""
+                select local_date as day, count(period_id) as numperiods, sum(quantity) as total_quantity, 
+                sum(value)/count(value) as price, sum(quantity*value) as total_cost  
+                from fulldata where date_trunc('month', local_date)='{month}-01'
+                group by local_date order by local_date"""
     else:
-        endstr = f"""
+        if has_pricebands:
+            endstr = f"""
             select date_trunc('month',local_date) as month, count(period_id) as numperiods, 
             sum(value)/count(value) as price, sum(quantity) as total_quantity, sum(quantity*value) as total_cost  
-            from fulldata group by month order by month"""
-
+            from fulldata group by month, value order by month"""
+        else:
+            endstr = f"""
+                select date_trunc('month',local_date) as month, count(period_id) as numperiods, 
+                sum(value)/count(value) as price, sum(quantity) as total_quantity, sum(quantity*value) as total_cost  
+                from fulldata group by month order by month"""
  
     s = f'''
     with periods as (select * from sm_periods where local_date between '{start}' and '{end}' )
@@ -321,9 +335,26 @@ def costPage(request, choice):
                 gaswarn = '<BR><B>These results are based on a gas conversion of {}kwh per m3. This factor appears wrong.</B> It <A HREF="https://www.theenergyshop.com/guides/how-to-convert-gas-units-to-kwh" target="_blank"> should be around 11.18</A>, based on a volume correction factor of 1.02264, a calorific value of about 40, and dividing by the kwh to joule conversion of 3.6. Your latest bill should show the applicable conversions.'.format(gasmult)
     else: gaswarn = ''
 
+    if has_pricebands:
+        data['price'] = data['price'].astype(float)
+
+        if 'day' not in request.GET:
+            if 'month' not in request.GET:
+                volumes_by_price = data.groupby(['month','price']).sum().total_quantity.unstack()
+                data = data.groupby('month').sum().reset_index()
+            else:
+                volumes_by_price = data.groupby(['day','price']).sum().total_quantity.unstack()
+                data = data.groupby('day').sum().reset_index()
+            if len(volumes_by_price.columns)>1:
+                volumes_by_price.rename(columns={x: x*vat for x in volumes_by_price.columns}, inplace=True)
+                #volumes_by_price.loc[:,:] = volumes_by_price.values / volumes_by_price.sum(axis=1).values.reshape(-1,1)
+            else:
+                has_pricebands = False
+
     data['price'] = np.where(data.total_quantity==0, data.price, data.total_cost/data.total_quantity).astype(float)
     data['total_cost'] *= vat
     data['price'] *= vat
+ 
 
     if 'month' in request.GET:
         month = request.GET.get('month')
@@ -353,18 +384,31 @@ def costPage(request, choice):
 
             table = '<TABLE><TR><TH>Monthly Quantity (kwh)</TH><TD>{:.1f}</TD></TR>'.format(data.total_quantity.sum())
             table += '<TR><TH>Total {} (£)</TH><TD>{:.2f}</TD></TR>'.format(costrev.title(), data.total_cost.sum()/100)
+
             avg = 48*data.total_cost.sum()/data.numperiods.sum()/100
             table += '<TR><TH>Avg Daily {} (£)</TH><TD>{:.2f}</TD></TR>'.format(costrev.title(), avg)
             avg = 48*(data.total_quantity).sum()/data.numperiods.sum()
             table += '<TR><TH>Avg Daily Quantity (kwh)</TH><TD>{:.2f}</TD></TR>'.format(avg)
             avg = data.total_cost.sum()/data.total_quantity.sum()
-            table += '<TR><TH>Avg Price (p/kwh)</TH><TD>{:.2f}</TD></TR></TABLE>'.format(avg)
-
-            table += f'<BR><TABLE><TR><TH>Day</TH><TH>Quantity</TH><TH>{costrev.title()}</TH><TH>Average<BR>Price</TH></TR>'
-            for _, j in data.iterrows():
-                t = '<TR><TD><A HREF="{}">{}</A></TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD></TR>'
-                table += t.format(adj_url(url, [],[('day',j.day.day)]),
+            table += '<TR><TH>Avg Price (p/kwh)</TH><TD>{:.2f}</TD></TR>'.format(avg)
+            if has_pricebands:
+                for p in volumes_by_price.columns:
+                    table += f'<TR><TH>Pct Qty at {p}p/kWh</TH><TD>{volumes_by_price[p].sum()/volumes_by_price.values.sum():.0%}</TD></TR>'
+            table += '</TABLE>'
+            table += f'<BR><TABLE><TR><TH>Day</TH><TH>Quantity</TH><TH>{costrev.title()}</TH><TH>Average<BR>Price</TH>'
+            if has_pricebands:
+                for col in volumes_by_price.columns:
+                    table += f'<TH>Qty at <BR>{col}</TH>'   
+            table += '</TR>'  
+            for i, j in data.iterrows():
+                t = '<TR><TD><A HREF="{}">{}</A></TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD>'
+                tablerow = t.format(adj_url(url, [],[('day',j.day.day)]),
                                 j.day.strftime('%a %b %d'), j.total_quantity, j.total_cost/100, j.price)
+                if has_pricebands:
+                    for col in volumes_by_price.columns:
+
+                        tablerow += '<TD>{:.1%}</TD>'.format(volumes_by_price[col].iloc[i]/volumes_by_price.iloc[i].sum())
+                table += tablerow + '</TR>'
             table += '</TABLE>'  
     else:        
         heading = 'Monthly {}'.format(type.capitalize())
@@ -374,20 +418,35 @@ def costPage(request, choice):
         cost = str(['{:.2f}'.format(x/100) for x in data['total_cost'].tolist()])
         table = '<TABLE><TR><TH>Total Quantity (kwh)</TH><TD>{:.1f}</TD></TR>'.format(data.total_quantity.sum())
         table += '<TR><TH>Total {} (£)</TH><TD>{:.2f}</TD></TR>'.format(costrev.title(), data.total_cost.sum()/100)
+
         avg = 48*data.total_cost.sum()/data.numperiods.sum()/100
         table += '<TR><TH>Avg Daily {} (£)</TH><TD>{:.2f}</TD></TR>'.format(costrev.title(), avg)
         avg = 48*(data.total_quantity).sum()/data.numperiods.sum()
         table += '<TR><TH>Avg Daily Quantity (kwh)</TH><TD>{:.2f}</TD></TR>'.format(avg)
         avg = data.total_cost.sum()/data.total_quantity.sum()
-        table += '<TR><TH>Avg Price (p/kwh)</TH><TD>{:.2f}</TD></TR></TABLE>'.format(avg)
+        table += '<TR><TH>Avg Price (p/kwh)</TH><TD>{:.2f}</TD></TR>'.format(avg)
+        if has_pricebands:
+            for p in volumes_by_price.columns:
+                table += f'<TR><TH>Pct Qty at {p}p/kWh</TH><TD>{volumes_by_price[p].sum()/volumes_by_price.values.sum():.1%}</TD></TR>'
+        table += '</TABLE>'
         table += f'<BR><TABLE><TR><TH>Month</TH><TH>Total<BR>Quantity</TH><TH>Total<BR>{costrev.title()}</TH>' 
-        table += f'<TH>Daily<BR>{costrev.title()}</TH><TH>Daily<BR>Quantity</TH><TH>Average<BR>Price</TH></TR>'
-        for _, j in data.iterrows():
-            t = '<TR><TD><A HREF="{}">{}</A></TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD></TR>'
+        table += f'<TH>Daily<BR>{costrev.title()}</TH><TH>Daily<BR>Quantity</TH><TH>Average<BR>Price</TH>'
+        if has_pricebands:
+            for col in volumes_by_price.columns:
+                table += f'<TH>Qty at <BR>{col}</TH>'       
+        table += '</TR>'
+        for i, j in data.iterrows():
+            t = '<TR><TD><A HREF="{}">{}</A></TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD><TD>{:.3f}</TD>'
+ 
             dq = 48*(j.total_quantity/j.numperiods)
             dc = 48*(j.total_cost/j.numperiods)/100
-            table += t.format(adj_url(url, [],[('month',j.month.strftime('%Y-%m'))]),
+            tablerow = t.format(adj_url(url, [],[('month',j.month.strftime('%Y-%m'))]),
                                 j.month.strftime('%b %Y'), j.total_quantity, j.total_cost/100, dc, dq, j.price)
+            if has_pricebands:
+                for col in volumes_by_price.columns:
+                    tablerow += '<TD>{:.1%}</TD>'.format(volumes_by_price[col].iloc[i]/volumes_by_price.iloc[i].sum())
+ 
+            table += tablerow + '</TR>'
         table += '</TABLE>'  
 
     if type_id!=2:
@@ -566,9 +625,10 @@ def emissionsPage(request):
 
 
 def netimportPage(request):
+    
     smid = get_sm_id(request)
-    start = request.GET.get('start', '2018-01-01')
-    end = request.GET.get('end','2025-01-01')    
+    start = request.GET.get('start', '2019-01-01')
+    end = request.GET.get('end','2025-12-01')    
 
     if 'month' in request.GET:
         month = request.GET.get('month')
@@ -591,23 +651,26 @@ def netimportPage(request):
             sum(export) as total_export
             from fulldata group by month order by month"""
 
+
+
     s = f'''
     with periods as (select * from sm_periods where local_date between '{start}' and '{end}' )
     , quantities1 as ({quantitystr(smid, 0)})
     , quantities2 as ({quantitystr(smid, 2)})
     , full1 as 
      (select periods.*, quantities1.quantity 
-    from periods inner join quantities1 on periods.period_id=quantities1.period_id)
+    from periods inner join quantities1 on periods.period_id=quantities1.period_id order by 1)
     , full2 as 
      (select periods.*, quantities2.quantity
-    from periods inner join quantities2 on periods.period_id=quantities2.period_id)
+    from periods inner join quantities2 on periods.period_id=quantities2.period_id order by 1)
     , fulldata as
     (select full2.*, coalesce(full1.quantity,0) as import, coalesce(full2.quantity,0) as export
     from full2 left outer join full1 on full2.period_id=full1.period_id)
         {endstr}
     ''' 
-    #raise Exception(s)
+
     data = loadDataFromDb(s, returndf=True)
+
     url = request.get_full_path()
     
     if data.shape[0]==0:

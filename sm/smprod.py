@@ -31,6 +31,14 @@ def checkRequest(request):
     if 'MAC' in request.GET:
         return redirect(adj_url(url, ['MAC'],[('n3rgy', request.GET.get('MAC'))]))
 
+    if request.GET.get('tariff','ignore')=='GO-18-06-12':
+        region = request.GET['region']
+        oldgotariffs = {'A': 14.1225, 'B': 13.4505, 'C': 14.7105, 'D': 14.6265, 'E': 13.7235, 'F': 12.9255, 'G': 13.965,
+                     'H': 13.797, 'J': 14.3955, 'K': 14.0175,  'L': 14.2905, 'M': 13.314, 'N': 14.1855, 'P': 14.4585}
+
+        new_tariff = f'0030-0430:5,{oldgotariffs[region]}'
+        return redirect(adj_url(url, [],[('tariff', new_tariff)]))
+
     if isdemo(request):
         if ('tariff' not in request.GET) and (choice in ['cost']):
             u = adj_url(url, [], [('tariff', '15')])

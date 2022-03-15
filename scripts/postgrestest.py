@@ -1274,7 +1274,7 @@ if False:
             print(loadDataFromDb(s) )       
 
 
-if True:
+if False:
     conn, cur = getConnection()
     df_idx = pd.date_range(datetime.datetime(2019,1,1), datetime.datetime(2022,7,1), freq='30min')
     df_idx_local = df_idx.tz_localize('UTC').tz_convert('Europe/London')

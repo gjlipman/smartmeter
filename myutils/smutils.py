@@ -51,11 +51,12 @@ def getTariff(request, choice):
         s1 = """
                 <P>In order to calculate the cost of your electricity, you need to enter your tariff. This can be a fixed price. To use a fixed price, 
                 include a parameter like &tariff=10.3. This tariff is assumed to be in p/kwh, including VAT, excluding any standing charges.</P>
+            <P>You can also add a tariff like Go or Eco-7 using a format like &tariff=0000-0700:12,25 or &tariff=0030-0430:5,25 - in each of these cases,
+            the time specifies when the first price applies, and the final price applies to rest of the time. So you could even put in a three tier price,
+            like 0030-0430:5,1600-1900:35,20.</P>
 
             <P>You can also choose a time-varying tariff, although at this point I have only added the data for Octopus Agile 
-            and GO and Tracker for electricity (AGILE-18-02-21, GO-18-06-12, SILVER-2017-1). Next on my list to add are Octopus's Go Faster tariffs, and their Gas Tracker. 
-            Let me know if there are time-varying 
-            tariffs from other suppliers you would find useful for me to add.
+            and GO and Tracker for electricity (AGILE-18-02-21, SILVER-2017-1). 
             To use this, include the parameter &tariff=AGILE-18-02-21&amp;region=C. 
             <P>If you aren't sure what region you are in, you can find these in the following table:</P>
             <TABLE><TR><TH>Region</TH><TH>MPAN Number</TH><TH>Region Name</TH></TR>
@@ -138,6 +139,7 @@ def n3rgymeters(key, n3adj):
 def latesttariff(mp):
     if len(mp['agreements']):
         d = pd.DataFrame(mp['agreements'])
+        d['valid_to'] = np.where(d.valid_to.isin([None]), '2099-12-31', d.valid_to )
         d = d.sort_values('valid_to', ascending=False).tariff_code.iloc[0]
         return d
     else:
@@ -224,7 +226,7 @@ def octopusmeters(key, getprices=False):
 def octopusconsumptionformpan(key, mpan, meter, type):
     import numpy as np
     dfs = []
-    url = 'https://api.octopus.energy/v1/{}-meter-points/{}/meters/{}/consumption/?period_from=2019-01-01T00:00:00&period_to=2022-01-01T00:00:00&page_size=10000'
+    url = 'https://api.octopus.energy/v1/{}-meter-points/{}/meters/{}/consumption/?period_from=2019-01-01T00:00:00&period_to=2022-07-01T00:00:00&page_size=10000'
     url = url.format(type, mpan, meter)
     r = requests.get(url, auth=(key[10:],''))
     if len(r.json().get('results',[])):
@@ -244,7 +246,7 @@ def octopusconsumptionformpan(key, mpan, meter, type):
 
 
 
-def octopusconsumption(key, type_id, first=None, last=None):
+def octopusconsumption(key, type_id, first=None, last=None, meterorder=1):
     url =   'https://api.octopus.energy/v1/accounts/' + key[:10]
     r = requests.get(url, auth=(key[10:],''))   
     dfs = None 
@@ -265,7 +267,7 @@ def octopusconsumption(key, type_id, first=None, last=None):
             meters = [e for e in meters if 'OUTGOING' not in e[2].replace('EXPORT','OUTGOING')]   
         #elif type_id==2:
         #    meters = [e for e in meters if 'OUTGOING' in e[2].replace('EXPORT','OUTGOING')]   
-        for e in meters:
+        for e in meters[::meterorder]:
             dfs = octopusconsumptionformpan(key, e[0], e[1], 'electricity')
             if dfs is not None:
                 break
@@ -289,7 +291,7 @@ def octopusconsumption(key, type_id, first=None, last=None):
         region = e[2][-1]
     else:
         region = ''
-    idx = pd.date_range(START, '202201010000', freq='30T')  
+    idx = pd.date_range(START, '202207010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
@@ -404,7 +406,8 @@ def loadSmData(request, type_id):
         source_id=0
     elif 'octopus' in request.GET:
         key = request.GET.get('octopus')
-        df, region = octopusconsumption(key, type_id)
+        meterorder = int(request.GET.get('meterorder','1'))
+        df, region = octopusconsumption(key, type_id, meterorder=meterorder)
         source_id=1
     else:
         raise Exception('MAC, n3rgy or octopus keys are not provided')
