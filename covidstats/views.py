@@ -7,6 +7,7 @@ import datetime
 
 
 def index(request):
+    return HttpResponse("none")
     try:
         if 'case' in request.path_info:
             stat = 'cases'

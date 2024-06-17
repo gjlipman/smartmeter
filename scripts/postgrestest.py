@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import requests
+from myutils.utils import loadDataFromDb
 
 class TestRequest:
     def __init__(self, url, method='GET', META=None, postdata=None):
@@ -27,6 +28,76 @@ class TestRequest:
 
 conn, cur = getConnection()
 
+if False:
+    before = pd.Timestamp.now().isoformat()
+    #before = '2024-03-03T01:00'
+    s = f'''
+    with latest as (select datetime, max(created_on) created_on from price_forecast 
+    where datetime>=date_trunc('day', TIMESTAMP '{before}') and created_on<'{before}'
+    group by datetime) 
+        
+        select latest.datetime, demand, solar, wind, price, latest.created_on 
+        from price_forecast inner join latest on price_forecast.datetime=latest.datetime 
+        and price_forecast.created_on=latest.created_on
+      order by latest.datetime;'''
+
+    #data1 = loadDataFromDb(s, returndf=True)
+
+    #print(data1)
+
+    s = f'''
+    with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_demand 
+    where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+    group by forecast_for order by 1 limit 168)
+    , d as (select d1.forecast_for, d1.forecast_at as demand_at, forecast_demand.forecast as demand
+    from d1 inner join forecast_demand on d1.forecast_for=forecast_demand.forecast_for and d1.forecast_at=forecast_demand.forecast_at)
+    select * from d 
+    '''
+    data_d = loadDataFromDb(s, returndf=True)
+    s = f'''
+    with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_wind 
+    where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+    group by forecast_for order by 1 limit 168)
+    , w as (select d1.forecast_for, d1.forecast_at as wind_at, forecast_wind.forecast as wind
+    from d1 inner join forecast_wind on d1.forecast_for=forecast_wind.forecast_for and d1.forecast_at=forecast_wind.forecast_at)
+    
+    select * from w 
+    '''
+    data_w = loadDataFromDb(s, returndf=True)
+    s = f'''
+    with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_solar
+    where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+    group by forecast_for order by 1 limit 168)
+    , s as (select d1.forecast_for, d1.forecast_at as solar_at, forecast_solar.forecast as solar
+    from d1 inner join forecast_solar on d1.forecast_for=forecast_solar.forecast_for and d1.forecast_at=forecast_solar.forecast_at)
+
+    select * from s 
+    '''
+    data_s = loadDataFromDb(s, returndf=True)
+    d = pd.concat([x.set_index('forecast_for') for x in [data_d, data_w, data_s]], axis=1)
+    d = d.iloc[:168]
+    d['gross_demand'] = d.demand + d.solar.fillna(0)
+    d['net_demand'] = d.demand + d.wind
+    d['price'] = np.log()
+    import pdb; pdb.set_trace()
+
+
+
+
+if False:
+    for kind in ["demand", "wind", "solar"]:
+        s = f"""
+        DROP TABLE IF EXISTS forecast_{kind};
+        CREATE TABLE forecast_{kind} (
+        id serial PRIMARY KEY
+        , forecast_for TIMESTAMP NOT NULL
+        , forecast_at TIMESTAMP NOT NULL
+        , forecast FLOAT(8) NOT NULL
+        );
+
+        """
+        cur.execute(s)
+        conn.commit()
 
 if False:
     s = """
@@ -191,31 +262,25 @@ if False:
 
 
 if False:   # Creates new hh tariff variables in sm_hh_variables and sm_tariffs
-    product = 'AGILE-OUTGOING-19-05-13'
-    type_id=2
-
+    product = 'AGILE-FLEX-22-11-25' #'AGILE-22-07-22'
+    type_id=0
+    print('a')
     s = f"""
-    delete from sm_hh_variables where var_name like '{product}%';
-    delete from sm_tariffs where product='{product}';
+    delete from sm_variables where product like '{product}%';
+
     """
 
     cur.execute(s)
     conn.commit() 
-    
-    for region in ['A','B','C','D','E','F','G','H','J','K','L','M','N','P']:    
-        s = f"""
-        INSERT INTO sm_hh_variables (var_name) values ('{product}-{region}');
-        """
-        cur.execute(s)
-        conn.commit()  
-        s = f"select var_id from sm_hh_variables where var_name='{product}-{region}';"
-        cur.execute(s)
-        var_id = cur.fetchone()[0]
-        conn.commit()  
+    s = "select max(var_id)+1 as next_var_id from sm_variables"
+    cur.execute(s)
+    next_var_id = cur.fetchone()[0]
+    conn.commit()  
 
+    for i, region in enumerate(['A','B','C','D','E','F','G','H','J','K','L','M','N','P']):    
         s = f"""
-        INSERT INTO sm_tariffs (type_id, product, region, granularity_id, var_id) values
-        ({type_id}, '{product}', '{region}', 0, {var_id});
+        INSERT INTO sm_variables (var_id, product, region, type_id, granularity_id) values
+        ({next_var_id+i}, '{product}', '{region}', {type_id}, 0);
         """
         cur.execute(s)
         conn.commit()  
@@ -224,13 +289,14 @@ START='201901010000'
 if False: #Inserts initial prices into hh tariff variables
 
     import requests
-    idx = pd.date_range(START, '202101010000', freq='30T')  
+    idx = pd.date_range(START, '202301312300', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
 
-    for region in ['B','C','D','E','F','G','H','J','K','L','M','N','P']:
-        tariff = 'AGILE-OUTGOING-19-05-13'
+    for region in ['A','B','C','D','E','F','G','H','J','K','L','M','N','P']:
+        print(region)
+        tariff = 'AGILE-FLEX-22-11-25' #'AGILE-18-02-21'
         url = ('https://api.octopus.energy/v1/products/{}/' + 
             'electricity-tariffs/E-1R-{}-{}/standard-unit-rates/' + 
                 '?period_from={}Z&period_to={}Z&page_size=15000')
@@ -245,16 +311,17 @@ if False: #Inserts initial prices into hh tariff variables
         while r.json()['next'] is not None:
             r = requests.get(r.json()['next'])
             dfs.append(pd.DataFrame(r.json()['results'])[['valid_from','value_exc_vat']])
-            if len(dfs)>30:
+            if len(dfs)>100:
                 raise Exception        
 
         dfs = pd.concat(dfs)
+        print(dfs)
         dfs['timestamp'] = pd.DatetimeIndex(dfs.valid_from.str[:-1])
         dfs = df.merge(right=dfs, how='left', on='timestamp')
         dfs = dfs[dfs.value_exc_vat.notna()]
 
-
-        s = f"select var_id from sm_hh_variables where var_name='{tariff}-{region}';"
+        tariff = 'AGILE-FLEX-22-11-25'
+        s = f"select var_id from sm_variables where product='{tariff}' and region='{region}';"
         cur.execute(s)
         var_id = cur.fetchone()[0]
         conn.commit()  
@@ -273,9 +340,114 @@ if False: #Inserts initial prices into hh tariff variables
         for i, j in dfs.iterrows():
             s+= " ({}, {}, {}),".format(var_id, i, j.value_exc_vat)
         s = s[:-1] + ';'
-        
+        print(s)
         cur.execute(s)
         conn.commit()  
+
+if False:
+    s = """
+    select v.period_id, CASE WHEN p.local_time in ('16:00', '16:30', '17:00', '17:30', '18:00', '18:30')
+    THEN 1   
+    ELSE 0  END as is_peak, 
+    CASE WHEN p.local_time in ('16:00', '16:30', '17:00', '17:30', '18:00', '18:30')
+    THEN (v.value-12)/2   
+    ELSE (v.value)/2  END as wholesale
+    from sm_periods p 
+    inner join sm_hh_variable_vals v on p.period_id=v.period_id and v.var_id=17
+    where p.period<'2019-05-15 23:00';
+    """
+    df = loadDataFromDb(s, returndf=True)
+    df['value'] = df['wholesale']*0.95+1.3 + np.where(df.is_peak,5.93,0)
+    df['value'] = df['value'].round(3)
+    max_period = df.period_id.max()
+
+    for region in ['A','B','C','D','E','F','G','H','J','K','L','M','N','P']:
+        s = f"select var_id from sm_variables where product='AGILE-OUTGOING-19-05-13' and region='{region}'"
+        var_id = loadDataFromDb(s)[0][0]
+        print(var_id)
+        s = f"delete from sm_hh_variable_vals where var_id={var_id} and period_id<={max_period}"
+        loadDataFromDb(s)
+        s = """
+            INSERT INTO sm_hh_variable_vals (var_id, period_id, value) values
+            """
+        for a, b in df.iterrows():
+            s+= " ({}, {}, {}),".format(var_id, b.period_id, b['value'])
+        s = s[:-1] + ';'
+        loadDataFromDb(s)  
+
+        
+
+
+if False: #Populate initial values AGILE-22-07-22 into hh tariff variables
+
+
+    s = """
+    select v.period_id, CASE WHEN p.local_time in ('16:00', '16:30', '17:00', '17:30', '18:00', '18:30')
+    THEN 1   
+    ELSE 0  END as is_peak, 
+    CASE WHEN p.local_time in ('16:00', '16:30', '17:00', '17:30', '18:00', '18:30')
+    THEN (v.value-5.93-1.3)/0.95   
+    ELSE (v.value-1.3)/0.95  END as wholesale
+    from sm_periods p 
+    inner join sm_hh_variable_vals v on p.period_id=v.period_id and v.var_id=49
+    where p.period<'2022-03-31 23:00';
+    """
+    df_full = loadDataFromDb(s, returndf=True)
+    last_period = max(df_full.period_id)
+
+    for region in ['C','B','A','D','E','F','G','H','J','K','L','M','N','P']:
+        df = df_full.copy()
+        if region in ['B','C','M']:
+            multiplier = 2
+        elif region in ['A','E','F','G','H','N']:
+            multiplier = 2.1
+        elif region in ['D','J','K']:
+            multiplier=2.2
+        elif region in ['L']:
+            multiplier = 2.3
+        elif region in ['P']:
+            multiplier = 2.4
+        if region in ['L']:
+            adder = 11
+        elif region in ['C','E','F','G','H','J','K','P']:
+            adder = 12
+        elif region in ['A','D','M','N']:
+            adder = 13
+        elif region in ['B']:
+            adder = 14
+        df['region_price'] = df.wholesale * multiplier
+        df['region_price'] += np.where(df.is_peak, adder, 0)
+        df = df[df.region_price>35/1.05].copy()
+        df['value'] = df.region_price.clip(upper=55/1.05)
+        s = f"select var_id from sm_variables where product='AGILE-22-07-22' and region='{region}'"
+        var_id = loadDataFromDb(s)[0][0]
+        print(var_id)
+        s = f"select var_id from sm_variables where product='AGILE-18-02-21' and region='{region}'"
+        old_var_id = loadDataFromDb(s)[0][0]
+        s = f"select * from sm_hh_variable_vals where var_id={old_var_id} and period_id<={last_period}"
+        df_full = loadDataFromDb(s, returndf=True)
+  
+        df_full = df_full[df_full.period_id.isin(df.period_id.unique())==False].copy()
+        df['var_id'] = var_id
+        df['id'] = 0
+        print(len(df_full))
+        print(len(df))
+        df_full = pd.concat([df_full, df]).sort_values('period_id')
+        print(len(df_full))
+        print(df_full)
+
+        s = f"delete from sm_hh_variable_vals where var_id={var_id} and period_id<={last_period}"
+        loadDataFromDb(s)
+        
+        s = """
+            INSERT INTO sm_hh_variable_vals (var_id, period_id, value) values
+            """
+        for a, b in df_full.iterrows():
+            s+= " ({}, {}, {}),".format(var_id, b.period_id, b['value'])
+        s = s[:-1] + ';'
+        loadDataFromDb(s)  
+        
+
 
         
 
@@ -307,7 +479,7 @@ if False:
     conn.commit() 
 
 
-from myutils.utils import loadDataFromDb
+
 
 if False:  #Creates daily tracker variables
     product = 'SILVER-2017-1'
@@ -465,25 +637,26 @@ if False:
 
 
 
+
 if False:
     s = "insert into sm_hh_variables (var_name) Values ('Profile_1'), ('Profile_2');"
     #loadDataFromDb(s)
     # 
 
     for pc in [1,2]:
-        idx = pd.date_range(START, '202203312300', freq='30T')  
+        idx = pd.date_range(START, '202503312300', freq='30T')  
         df = pd.DataFrame()
         df['timestamp'] = idx
         df = pd.DataFrame(idx, columns=['timestamp'])
         df = df.iloc[:-1].copy()
-        f = '/home/django/django_project/scripts/Default_Period_Profile_Class_Coefficient_309.csv'
+        f = '/home/django/django_project/scripts/Default_Period_Profile_Class_Coefficient_346.csv'
         d = pd.read_csv(f)
         d.columns = ['class','d1','period','coeff']
         d = d[d['class']==pc]
 
         d['date'] = d.d1.str[6:] + d.d1.str[2:6] + d.d1.str[:2]
         d = d[d.date>=(START[:4] + '/' + START[4:6] + '/' + START[6:8])]
-        df = df[df.timestamp>='2021-03-31 23:00']
+        df = df[df.timestamp>='2024-03-31 23:00']
 
 
         #d = d[d.date<'2021/04/01']
@@ -492,8 +665,8 @@ if False:
 
 
         df['coeff'] = d.coeff.tolist()
-
-
+        print(df)
+        
         s = "select var_id from sm_hh_variables where var_name='{}';".format('Profile_{}'.format(pc))
         var_id = loadDataFromDb(s)[0][0]
         s = "insert into sm_hh_variable_vals (var_id, period_id, value) values "
@@ -1276,7 +1449,7 @@ if False:
 
 if False:
     conn, cur = getConnection()
-    df_idx = pd.date_range(datetime.datetime(2019,1,1), datetime.datetime(2022,7,1), freq='30min')
+    df_idx = pd.date_range(datetime.datetime(2019,1,1), datetime.datetime(2024,9,1), freq='30min')
     df_idx_local = df_idx.tz_localize('UTC').tz_convert('Europe/London')
     df = pd.DataFrame(index=df_idx)
     df['period'] = df_idx.strftime('%Y-%m-%d %H:%M')
@@ -1284,8 +1457,8 @@ if False:
     df['local_time'] = df_idx_local.strftime('%H:%M')
     df['timezone_adj'] = df_idx_local.strftime('%z').str[0:3].astype(int)
     df.reset_index(inplace=True)
-    df = df.loc[43777:]
-    print(df)
+
+    df = df.loc[81793:]
 
     start = """
     INSERT INTO sm_periods (period_id, period, local_date, local_time, timezone_adj)

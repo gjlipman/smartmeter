@@ -26,7 +26,7 @@ def getregionselector(region):
 
 def gettariffselector(type_id, tariff, price):
     if price is None:
-        if tariff in ['AGILE-18-02-21','SILVER-2017-1','AGILE-OUTGOING-19-05-13']:
+        if tariff in ['AGILE-18-02-21','AGILE-OUTGOING-19-05-13', 'AGILE-FLEX-22-11-25']:
             price = 0.0
         else: 
             price = tariff
@@ -39,11 +39,11 @@ def gettariffselector(type_id, tariff, price):
         #    price = 0.0
 
     if type_id == 0:
-        tariffs =   ['Fixed','AGILE-18-02-21', 'SILVER-2017-1']    
+        tariffs =   ['Fixed','AGILE-18-02-21', 'AGILE-22-07-22', 'AGILE-FLEX-22-11-25']    
     elif type_id == 2:
         tariffs = ['Fixed', 'AGILE-OUTGOING-19-05-13']
     else:
-        tariffs = ['Fixed', 'SILVER-2017-1']
+        tariffs = ['Fixed']
 
     tariffid = tariffs.index(tariff) if tariff in tariffs else 0
     s = ''
@@ -179,8 +179,8 @@ def billsPage(request, choice):
     price = None
     region = request.GET.get('region', None)
     gasmult = request.GET.get('gasmult','1.0')
-    start = '2020/07/01'
-    end = '2020/07/31'
+    start = request.GET.get('start', '2023/01/01')
+    end = request.GET.get('end', '2023/08/31')
     s2 = ''
 
     if request.method=='POST':
@@ -349,7 +349,7 @@ def savetocsv(request, type_id):
         start = '2019/01/01'
     end = request.POST.get('enddate')    
     if end in ['yyyy/mm/dd','']:
-        end = '2022/07/01'
+        end = '2024/09/01'
 
     if option[:2]=='hh':
         cols = {'q': ', quantity ', 'p': ', price', 'e': ', price', 'q_p': ', quantity, price ','q_e': ', quantity, price'}[option[3:]]
@@ -374,7 +374,12 @@ def savetocsv(request, type_id):
     """
 
     df = loadDataFromDb(s, returndf=True)
- 
+    
+    if type_id == 1:
+        for col in ['cost', 'quantity']:
+            if col in df.columns:
+                df[col] *= float(request.POST.get('gasmult'))
+
     if option in ['hh_e','hh_q_e','d_q_e']:
         df.rename(columns={'price': 'Carbon Intensity (g/kWh)', 'cost': 'Carbon Emissions (g)'}, inplace=True)
 
@@ -386,6 +391,7 @@ def savetocsv(request, type_id):
     for col, dp in [('quantity', 3), ('price', 3), ('cost', 1)]:
         if col in df.columns:
             df[col] = df[col].round(dp)
+
 
 
     df.rename(columns={'period': 'Period_UTC', 'local_date': 'Date_local',
@@ -702,7 +708,7 @@ def logPage(request):
         s = '''
             with log as 
                 (select date(datetime-Interval '3 hours') myday, 
-                    * from sm_log where url not LIKE '%debug%')
+                    * from sm_log where url not LIKE '%debug%' and date(datetime)>'2024-02-01')
                 , log1 as (select myday, count(id) count from log group by myday)
                 , log2 as (select myday, count(id) count from log where session_id is not null group by myday) 
                 , log3 as (select myday, count(id) count from log where url like '%load%' group by myday)
@@ -717,8 +723,15 @@ def logPage(request):
 
             order by log1.myday desc
             '''
-
+        s = "select datetime, url from sm_log where url not LIKE '%debug%' and date(datetime)='2024-06-07'"
+        #s = "delete from sm_log where date(datetime)< '2024-02-01'"
+        #df = loadDataFromDb(s, returndf=False)
+        #raise Exception(df)
         df = loadDataFromDb(s, returndf=True)
+        df['url2'] = df['url'].str[:10]
+        df = df.groupby('url2')['datetime'].count().reset_index()
+
+        #raise Exception(df)
         df1 = df.fillna(0)
 
         s = '''
@@ -786,8 +799,10 @@ def gastrackerpage(request):
         df['Wholesale'] = (df['A']/1.05-7.12)/1.2
     else:
         df['Wholesale'] = (df['A']/1.05-1.13)/1.06
-    s = '''<P>All prices are in p/kwh. Regional retail prices include VAT, wholesale prices do not include VAT. Note that the wholesale price will not 
-    be correct on days where the cap is applied.</P>'''
+    s = '''<P>All prices are in p/kwh. Regional retail prices include VAT, wholesale prices do not include VAT. Note that the regional prices are before any daily cap is applied.</P>'''
+    if 'showlatestdays' not in request.GET:
+        s += '''<P>I do not show the prices for the past few days, as the API sometimes shows inaccurate prices for these.</P>'''
+        df = df.iloc[5:]
     s += df.to_html(float_format='%.3f').replace('Wholesale','Wholesale<BR>p/kwh')
     header = 'Electricity' if type_id==0 else 'Gas'
     return create_sm_page(request, s, f'Octopus {header} Tracker Prices')
@@ -796,8 +811,9 @@ def calccomparison(request, choice, tariffs):
     type_id, type_label = get_type_id(choice)
     region = request.POST.get('region')
     gasmult = request.POST.get('gasmult', '1.0')
+    mult = float(gasmult) if type_id==1 else 1.0
     start = request.GET.get('start', '2019-01-01')
-    end = request.GET.get('end','2022-07-31')
+    end = request.GET.get('end','2024-07-31')
     end = min(end, datetime.datetime.today().strftime('%Y-%m-%d'))
     smid = get_sm_id(request)
     metric = request.POST.get('metric')
@@ -830,7 +846,7 @@ def calccomparison(request, choice, tariffs):
         if metric in ['price','deemedprice']:
             df = pd.DataFrame(df['price'].values, columns=[t], index=df.month.values)
         elif metric in ['cost']:
-            df = pd.DataFrame(df['total_cost'].values/100, columns=[t], index=df.month.values)
+            df = pd.DataFrame(df['total_cost'].values*mult/100, columns=[t], index=df.month.values)
         calcs.append(df)
 
     df = pd.concat(calcs, axis=1)
@@ -872,17 +888,14 @@ def tariffcomparison(request, choice):
         tariffs = [tariff]
         
         if type_id==0:
-            for t in ['AGILE-18-02-21','SILVER-2017-1']:
+            for t in ['AGILE-FLEX-22-11-25']:
                 if tariff!=t:
                     tariffs.append(t)
             tariffs.append('14.469')
             tariffs.append('0030-0430:5,25')
             tariffs.append('0000-0800:9.681,15.8445')
         elif type_id==1:
-            if tariff!='SILVER-2017-1':
-                tariffs.append('SILVER-2017-1')
-            else:
-                tariffs.append('2.562')
+            tariffs.append('10.562')
         elif type_id==2:
             if tariff!='AGILE-OUTGOING-19-05-13':
                 tariffs.append('AGILE-OUTGOING-19-05-13')
@@ -968,8 +981,8 @@ def analysisPage(request):
 
     smid = get_sm_id(request)
     if request.method=='GET':
-        start = request.GET.get('start', '2020/01/01')
-        end = request.GET.get('end','2022/03/31') 
+        start = request.GET.get('start', '2021/01/01')
+        end = request.GET.get('end','2024/08/31') 
     else:
         start = request.POST.get('startdate')
         end = request.POST.get('enddate')
@@ -1254,7 +1267,7 @@ def octobillPage(request):
         end = request.POST.get('end')
     else:
         start = '2016/01/01'
-        end = '2022/07/31'
+        end = '2023/07/31'
 
     s += f"""
     <form action="{request.get_full_path()}" method="post">

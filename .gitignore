@@ -3,3 +3,4 @@ myutils/keys.py
 __init__.py
 django_project/static/*
 scripts/Default*.csv
+scripts/mixergy.py

@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 import numpy as np
 import json
+import pickle
 from myutils.utils import getConnection, loadDataFromDb
 
 
@@ -29,19 +30,66 @@ def inner(request):
     region = request.GET.get('region', 'W').upper()
     before = request.GET.get('before', pd.Timestamp.now().isoformat())   
     ph = ('ph' in request.GET)
+    v2 = (pd.Timestamp(before) > pd.Timestamp('2024-06-01T00:00'))
+    slope = float(request.GET.get('slope', '80'))
+    intercept = float(request.GET.get('intercept','-710'))
 
+    if v2:
+        if "before" not in request.GET:
+            with open(os.path.dirname(os.path.realpath(__file__)) + "/cache.pkl", "rb") as f:
+                data = pickle.load(f)
+        else:
+            s = f'''
+            with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_demand 
+            where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+            group by forecast_for order by 1 limit 168)
+            , d as (select d1.forecast_for, d1.forecast_at as demand_at, forecast_demand.forecast as demand
+            from d1 inner join forecast_demand on d1.forecast_for=forecast_demand.forecast_for and d1.forecast_at=forecast_demand.forecast_at)
+            select * from d 
+            '''
+            data_d = loadDataFromDb(s, returndf=True)
+            s = f'''
+            with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_wind 
+            where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+            group by forecast_for order by 1 limit 168)
+            , w as (select d1.forecast_for, d1.forecast_at as wind_at, forecast_wind.forecast as wind
+            from d1 inner join forecast_wind on d1.forecast_for=forecast_wind.forecast_for and d1.forecast_at=forecast_wind.forecast_at)
+            
+            select * from w 
+            '''
+            data_w = loadDataFromDb(s, returndf=True)
+            s = f'''
+            with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_solar
+            where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+            group by forecast_for order by 1 limit 168)
+            , s as (select d1.forecast_for, d1.forecast_at as solar_at, forecast_solar.forecast as solar
+            from d1 inner join forecast_solar on d1.forecast_for=forecast_solar.forecast_for and d1.forecast_at=forecast_solar.forecast_at)
 
-    s = f'''
-    with latest as (select datetime, max(created_on) created_on from price_forecast 
-    where datetime>=date_trunc('day', TIMESTAMP '{before}') and created_on<'{before}'
-    group by datetime) 
-        
-        select latest.datetime, demand, solar, wind, price, latest.created_on 
-        from price_forecast inner join latest on price_forecast.datetime=latest.datetime 
-        and price_forecast.created_on=latest.created_on
-      order by latest.datetime;'''
+            select * from s 
+            '''
+            data_s = loadDataFromDb(s, returndf=True)
+            d = pd.concat([x.set_index('forecast_for') for x in [data_d, data_w, data_s]], axis=1)
+            d = d.iloc[:168]
+            d['solar'] = d.solar.fillna(0)
+            d['demand'] = d.demand + d.solar      
+            d['created_on'] = max(d.demand_at.max(), d.solar_at.max(), d.wind_at.max())
+            data = d.reset_index().rename(columns={'forecast_for': 'datetime'})
+    else:
 
-    data = loadDataFromDb(s, returndf=True)
+        s = f'''
+        with latest as (select datetime, max(created_on) created_on from price_forecast 
+        where datetime>=date_trunc('day', TIMESTAMP '{before}') and created_on<'{before}'
+        group by datetime) 
+            
+            select latest.datetime, demand, solar, wind, price, latest.created_on 
+            from price_forecast inner join latest on price_forecast.datetime=latest.datetime 
+            and price_forecast.created_on=latest.created_on
+        order by latest.datetime;'''
+
+        data = loadDataFromDb(s, returndf=True)
+    
+    netdemand = (data.demand-data.solar-data.wind).values
+    data['price'] = np.log(netdemand)*slope+intercept
 
     
     if region=='W':
@@ -127,6 +175,10 @@ def inner(request):
 
 def index(request):
     try:
+        #return HttpResponse("Under maintenance - please try again tomorrow")
+        for bot in ['Bot', 'externalhit', 'Bytespider']:
+            if 'bot' in request.META.get('HTTP_USER_AGENT',''):
+                return HttpResponse('none')
         template = inner(request)
         return HttpResponse(template)
     except Exception as err:    

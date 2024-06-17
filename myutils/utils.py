@@ -97,7 +97,7 @@ def load_bmrs_data(**kwargs):
     return r.text
 
 
-def email_script(errstr, script, email_on_ok):
+def email_script(errstr, script, email_on_ok, msg=''):
     if email_on_ok or len(errstr):
         import smtplib
         from email.mime.multipart import MIMEMultipart
@@ -113,13 +113,13 @@ def email_script(errstr, script, email_on_ok):
             subj = f'Script {script} completed - no errors'
         else:
             subj = f'Script {script} had errors'
-        text = errstr
+        text = errstr + msg
 
         msgRoot = MIMEMultipart("alternative")
         msgRoot['Subject'] = Header(subj, "utf-8")
         msgRoot['From'] = emailaddresses['from']
         msgRoot['To'] = emailaddresses['to']
-        text = MIMEText(errstr, "plain", "utf-8")
+        text = MIMEText(errstr + msg, "plain", "utf-8")
         msgRoot.attach(text)
         #html = MIMEText('asdfasf', "html", "utf-8")
         #msgRoot.attach(html)

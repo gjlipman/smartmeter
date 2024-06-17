@@ -31,10 +31,12 @@
   <div>
     <h1>Electricity Price Forecast as at {asof}</h1>
     <P>This webpage displays some rough forecasts of hourly electricty prices for the next week, based on expected demand, wind and solar generation. I have also included the day ahead half-hourly prices (averaged to hourly) once these are known and have been imported.</P>
+    <P><B>The forecast methodology changed significantly on 1 June 2024. See below for details. </B></P>
     <P>{retail}</P>
     <P>It should be noted that future wind generation and resulting prices are likely to be significantly different than those forecast.</P>
-    <P>I have described the methodology used in a bit more detail in <A HREF="https://medium.com/@guylipman/forecasting-uelectricity-prices-3276f893590f" target="_blank">this blog post</A>. You can also see 
-    the code for this model on <A HREF="https://github.com/gjlipman/smartmeter/tree/master/forecasts" target="_blank">github</A></P>
+    <P>Forecasts up to 1 June 2024 were based on BMRS data, and a methodology loosely described in <A HREF="https://medium.com/@guylipman/forecasting-uelectricity-prices-3276f893590f" target="_blank">this blog post</A>. You can also see 
+    the code for this model on <A HREF="https://github.com/gjlipman/smartmeter/tree/master/forecasts" target="_blank">github</A>. The slope and intercept to transform net demand to price have been updated to constant values as up to date price data is no longer openly available.</P>
+    <P>Forecasts from 1 June 2024 are based on NGESO demand, wind and solar forecasts, and a constant slope and intercept to transform net demand to price. .</P>
     <H2>{retail2}</H2>
     <canvas id="myChart1"></canvas>
     <H2>Forecasts of gross demand, wind and solar generation, and resultant net demand</H2>

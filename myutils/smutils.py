@@ -53,10 +53,10 @@ def getTariff(request, choice):
                 include a parameter like &tariff=10.3. This tariff is assumed to be in p/kwh, including VAT, excluding any standing charges.</P>
             <P>You can also add a tariff like Go or Eco-7 using a format like &tariff=0000-0700:12,25 or &tariff=0030-0430:5,25 - in each of these cases,
             the time specifies when the first price applies, and the final price applies to rest of the time. So you could even put in a three tier price,
-            like 0030-0430:5,1600-1900:35,20.</P>
+            like 0030-0430:5,1600-1900:35,20. For Cosy, this would be something like 0400-0700:20,1300-1600:20,1600-1900:50,34. For Flux this would be something like 0200-0500:15,1600-1900:50,30.</P>
 
             <P>You can also choose a time-varying tariff, although at this point I have only added the data for Octopus Agile 
-            and GO and Tracker for electricity (AGILE-18-02-21, SILVER-2017-1). 
+            (AGILE-18-02-21, AGILE-22-07-22, AGILE-FLEX-22-11-25). Tracker (SILVER-2017-1) is not currently supported.
             To use this, include the parameter &tariff=AGILE-18-02-21&amp;region=C. 
             <P>If you aren't sure what region you are in, you can find these in the following table:</P>
             <TABLE><TR><TH>Region</TH><TH>MPAN Number</TH><TH>Region Name</TH></TR>
@@ -71,7 +71,7 @@ def getTariff(request, choice):
             <P>In order to calculate the cost of your gas, you need to enter your tariff. This can be a fixed price. To use a fixed price, 
                 include a parameter like &gastariff=10.3. This tariff is assumed to be in p/kwh, including VAT, excluding any standing charges.</P>
 
-            <P>I have also added teh ability to use a time-varying tariff, for example &gastariff=SILVER-2017-1. If you do this, you will need to include 
+            <P>I have also added teh ability to use a time-varying tariff. Tracker (SILVER-2017-1) is not currently supported. If you do this, you will need to include 
             your region code. If you aren't sure what region you are in, you can find these in the following table:</P>
             <TABLE><TR><TH>Region</TH><TH>MPAN Number</TH><TH>Region Name</TH></TR>
             """
@@ -139,8 +139,13 @@ def n3rgymeters(key, n3adj):
 def latesttariff(mp):
     if len(mp['agreements']):
         d = pd.DataFrame(mp['agreements'])
-        d['valid_to'] = np.where(d.valid_to.isin([None]), '2099-12-31', d.valid_to )
-        d = d.sort_values('valid_to', ascending=False).tariff_code.iloc[0]
+        if 'valid_to' in d.columns:
+            d['valid_to'] = np.where(d.valid_to.isin([None]), '2099-12-31', d.valid_to )
+            d = d.sort_values('valid_to', ascending=False).tariff_code.iloc[0]
+        else:
+            d['valid_to'] = np.where(d.validTo.isin([None]), '2099-12-31', d.validTo)
+            d['tariffCode'] = d['tariff'].apply(lambda x: x['tariffCode'])
+            d = d.sort_values('valid_to', ascending=False).tariffCode.iloc[0]
         return d
     else:
         return ''
@@ -178,7 +183,124 @@ def gettariffdetails(tariff):
     return [tariff, product, region, results]
 
 
-def octopusmeters(key, getprices=False):
+def queryoctaccounts(key):
+    url = 'https://api.octopus.energy/v1/graphql/'
+    query = """
+        mutation APIKeyAuthentication($apiKey: String!) {
+          apiKeyAuthentication(apiKey: $apiKey) {
+            token,
+          }
+        }
+    """
+    variables = {'apiKey': key[10:]}
+
+    r = requests.post(url, json={'query': query, 'variables': variables}, )
+
+    headers = {'Authorization': r.json()['data']['apiKeyAuthentication']['token']}
+    #raise Exception(headers)
+    query = """
+    query getAccountDetails($accountNumber: String!) {
+    account(accountNumber: $accountNumber) {
+        properties {
+        postcode
+        occupancyPeriods {
+           effectiveFrom
+           effectiveTo
+        }
+        electricityMeterPoints {
+            mpan
+            meters(includeInactive: true) {
+                serialNumber
+                installationDate
+                smartImportElectricityMeter {
+                    status
+                }
+                smartExportElectricityMeter {
+                    status
+                }
+            }
+            agreements(includeInactive: false) {
+            validFrom
+            validTo
+            tariff {
+                ... on TariffType {
+                productCode
+                tariffCode
+                }
+            }
+            }
+            }
+
+        gasMeterPoints {
+            mprn
+            meters {
+            serialNumber
+            installationDate
+            }
+            agreements {
+            validFrom
+            validTo
+            tariff {
+                tariffCode
+                ... on TariffType {
+                productCode
+                }
+            }
+            }
+        }
+
+    }
+    }
+    }
+    """
+    variables= {'accountNumber': key[:10]}
+    r = requests.post(url, json={'query': query, 'variables': variables}, headers=headers )
+    return r
+
+def octopusmetersgql(key):
+    r = queryoctaccounts(key)
+    if r.status_code!=200:
+        return r.status_code, r.text
+    meters = []
+
+    for commod, mpan in [('electricity','mpan'),('gas','mprn')]:
+        for x in r.json()['data']['account']['properties']:
+            if True: #(x['moved_out_at'] is None) or include_old:
+                points = x[f'{commod}MeterPoints']
+                for i in points:
+                    for j in i['meters']:
+
+                        url = f"https://api.octopus.energy/v1/{commod}-meter-points/{i[mpan]}/meters/{j['serialNumber']}/consumption/"
+                        url += '?period_from=2021-01-01T00:00:00&period_to=2024-09-01T00:00:00&page_size=1'
+                        r2 = requests.get(url, auth=(key[10:],'')).json()
+                        if len(r2.get('results', [])):
+                            lateststartdate = r2['results'][0]['interval_start']
+                            tariff = latesttariff(i) 
+                            if commod=='electricity':
+                                if i.get('is_export', False):
+                                    type_id=2
+                                elif 'OUTGOING' in tariff.replace('EXPORT','OUTGOING'):
+                                    type_id=2
+                                else:
+                                    type_id=0
+                            elif commod=='gas':
+                                type_id=1
+                            p = [tariff]
+                            meters.append([type_id, i[mpan], j['serialNumber'], 
+                                    lateststartdate] + p) 
+    cols = ['type_id','mpan','serial','laststart','tariff']
+    meters = pd.DataFrame(meters, columns=cols)
+    meters.sort_values('type_id', inplace=True)    
+    a = pd.DatetimeIndex(meters.laststart.str[:16])
+    b = pd.TimedeltaIndex(np.where(meters.laststart.str.len()==25,1,0), 
+                              unit='h')
+    meters.laststart = a-b    
+    return meters
+
+
+def octopusmeters(key, getprices=False, include_old=False, gql=False):
+    if gql:
+        return octopusmetersgql(key)
     url =   'https://api.octopus.energy/v1/accounts/' + key[:10]
     r = requests.get(url, auth=(key[10:],''))   
     if r.status_code!=200:
@@ -186,12 +308,12 @@ def octopusmeters(key, getprices=False):
     meters = []
     for commod, mpan in [('electricity','mpan'),('gas','mprn')]:
         for x in r.json()['properties']:
-            if x['moved_out_at'] is None:
+            if (x['moved_out_at'] is None) or include_old:
                 points = x[f'{commod}_meter_points']
                 for i in points:
                     for j in i['meters']:
                         url = f"https://api.octopus.energy/v1/{commod}-meter-points/{i[mpan]}/meters/{j['serial_number']}/consumption/"
-                        url += '?period_from=2019-01-01T00:00:00&period_to=2022-07-01T00:00:00&page_size=1'
+                        url += '?period_from=2021-01-01T00:00:00&period_to=2024-09-01T00:00:00&page_size=1'
                         r2 = requests.get(url, auth=(key[10:],'')).json()
                         if len(r2.get('results', [])):
                             lateststartdate = r2['results'][0]['interval_start']
@@ -226,7 +348,7 @@ def octopusmeters(key, getprices=False):
 def octopusconsumptionformpan(key, mpan, meter, type):
     import numpy as np
     dfs = []
-    url = 'https://api.octopus.energy/v1/{}-meter-points/{}/meters/{}/consumption/?period_from=2019-01-01T00:00:00&period_to=2022-07-01T00:00:00&page_size=10000'
+    url = 'https://api.octopus.energy/v1/{}-meter-points/{}/meters/{}/consumption/?period_from=2019-01-01T00:00:00&period_to=2024-09-01T00:00:00&page_size=10000'
     url = url.format(type, mpan, meter)
     r = requests.get(url, auth=(key[10:],''))
     if len(r.json().get('results',[])):
@@ -246,44 +368,79 @@ def octopusconsumptionformpan(key, mpan, meter, type):
 
 
 
-def octopusconsumption(key, type_id, first=None, last=None, meterorder=1):
-    url =   'https://api.octopus.energy/v1/accounts/' + key[:10]
-    r = requests.get(url, auth=(key[10:],''))   
-    dfs = None 
-    if type_id in [0,2]:
-        meters = []
-        for p in r.json()['properties']:
-            if p['moved_out_at'] is None:
-                for i in p['electricity_meter_points']:
-                    is_export = i.get('is_export', False)
-                    if type_id==0 and is_export:
-                        continue 
-                    if type_id==2 and is_export==False:
-                        continue
+def octopusconsumption(key, type_id, first=None, last=None, meterorder=-1, request=None):
+    if request.GET.get('gqlaccounts', '0') == '0':
+        url =   'https://api.octopus.energy/v1/accounts/' + key[:10]
+        r = requests.get(url, auth=(key[10:],''))   
+        dfs = None 
+        if type_id in [0,2]:
+            meters = []
+            for p in r.json()['properties']:
+                if p['moved_out_at'] is None:
+                    for i in p['electricity_meter_points']:
+                        is_export = i.get('is_export', False)
+                        if type_id==0 and is_export:
+                            continue 
+                        if type_id==2 and is_export==False:
+                            continue
+                        for j in i['meters']:
+                            if len(j['serial_number'])>0:
+                                meters.append([i['mpan'], j['serial_number'], latesttariff(i)])                
+            if type_id==0:
+                meters = [e for e in meters if 'OUTGOING' not in e[2].replace('EXPORT','OUTGOING')]   
+            #elif type_id==2:
+            #    meters = [e for e in meters if 'OUTGOING' in e[2].replace('EXPORT','OUTGOING')]   
+            for e in meters[::meterorder]:
+                dfs = octopusconsumptionformpan(key, e[0], e[1], 'electricity')
+                if dfs is not None:
+                    break
+        elif type_id == 1:
+            meters = []
+            for p in r.json()['properties']:
+                for i in p['gas_meter_points']:
                     for j in i['meters']:
                         if len(j['serial_number'])>0:
-                            meters.append([i['mpan'], j['serial_number'], latesttariff(i)])                
-        if type_id==0:
-            meters = [e for e in meters if 'OUTGOING' not in e[2].replace('EXPORT','OUTGOING')]   
-        #elif type_id==2:
-        #    meters = [e for e in meters if 'OUTGOING' in e[2].replace('EXPORT','OUTGOING')]   
-        for e in meters[::meterorder]:
-            dfs = octopusconsumptionformpan(key, e[0], e[1], 'electricity')
-            if dfs is not None:
-                break
-    elif type_id == 1:
-        meters = []
-        for p in r.json()['properties']:
-            for i in p['gas_meter_points']:
-                for j in i['meters']:
-                    if len(j['serial_number'])>0:
-                        meters.append([i['mprn'], j['serial_number'], latesttariff(i)])      
-        for e in meters:
-            dfs = octopusconsumptionformpan(key, e[0], e[1], 'gas')
-            if dfs is not None:
-                break     
+                            meters.append([i['mprn'], j['serial_number'], latesttariff(i)])      
+            for e in meters[::meterorder]:
+                dfs = octopusconsumptionformpan(key, e[0], e[1], 'gas')
+                if dfs is not None:
+                    break     
+        else:
+            raise Exception('Not implemented yet for type_id {}'.format(type_id))   
     else:
-        raise Exception('Not implemented yet for type_id {}'.format(type_id))        
+        r = queryoctaccounts(key)
+        dfs = None 
+        if type_id in [0,2]:
+            meters = []
+            for p in r.json()['data']['account']['properties']:
+                if p['occupancyPeriods'][-1]['effectiveTo'] is None:
+                    for i in p['electricityMeterPoints']:
+                        for j in i['meters']:
+                            if len(j['serialNumber'])>0:
+                                is_export = ( j['smartExportElectricityMeter'] is not None)
+                                meters.append([i['mpan'], j['serialNumber'], latesttariff(i), is_export])                
+            if type_id==0:
+                meters = [e for e in meters if 'OUTGOING' not in e[2].replace('EXPORT','OUTGOING')]   
+            elif type_id==2:
+                meters = [e for e in meters if 'OUTGOING' in e[3]]   
+            for e in meters[::meterorder]:
+                dfs = octopusconsumptionformpan(key, e[0], e[1], 'electricity')
+                if dfs is not None:
+                    break
+        elif type_id == 1:
+            meters = []
+            for p in r.json()['data']['account']['properties']:
+                if p['occupancyPeriods'][-1]['effectiveTo'] is None:
+                    for i in p['gasMeterPoints']:
+                        for j in i['meters']:
+                            if len(j['serialNumber'])>0:
+                                meters.append([i['mprn'], j['serialNumber'], latesttariff(i)])      
+            for e in meters[::meterorder]:
+                dfs = octopusconsumptionformpan(key, e[0], e[1], 'gas')
+                if dfs is not None:
+                    break     
+        else:
+            raise Exception('Not implemented yet for type_id {}'.format(type_id))        
     
     if dfs is None:
         return None, None
@@ -291,16 +448,21 @@ def octopusconsumption(key, type_id, first=None, last=None, meterorder=1):
         region = e[2][-1]
     else:
         region = ''
-    idx = pd.date_range(START, '202207010000', freq='30T')  
+    dfs = dfs.drop_duplicates('timestamp', keep='first')
+    idx = pd.date_range(START, '202409010000', freq='30T')  
     df = pd.DataFrame()
     df['timestamp'] = idx
     df = pd.DataFrame(idx, columns=['timestamp'])
+
     dfs = df.merge(right=dfs, on='timestamp', how='left')
+    if 'debug' in request.GET:
+        raise Exception((df, dfs))  
     dfs = dfs[dfs.consumption.notna()]
+    if 'debug' in request.GET:
+        raise Exception(dfs)
     dfs = dfs[['timestamp','consumption']]
     dfs.columns=['timestamp','value']
     return dfs, region
-
 
 
 def getDataFromN3RGY(key, type_id, n3adj, first=None, last=None):    
@@ -387,7 +549,7 @@ def isdemo(request):
 def get_sm_id(request, createifnone=False):
     key = request.GET.get('octopus', request.GET.get('n3rgy',None))
     demokey = 'e4280c7d-9d06-4bbe-87b4-f9e106ede788'
-    if (key is None) or (key[-6:] == 'RMePtm'):
+    if (key is None) or (key[-6:] in ['RMePtm', '64E78B']):
         return demokey
     if f'sm_id_{key[-3:]}' in request.COOKIES:
         return request.COOKIES[f'sm_id_{key[-3:]}']
@@ -406,8 +568,8 @@ def loadSmData(request, type_id):
         source_id=0
     elif 'octopus' in request.GET:
         key = request.GET.get('octopus')
-        meterorder = int(request.GET.get('meterorder','1'))
-        df, region = octopusconsumption(key, type_id, meterorder=meterorder)
+        meterorder = int(request.GET.get('meterorder','-1'))
+        df, region = octopusconsumption(key, type_id, meterorder=meterorder, request=request)
         source_id=1
     else:
         raise Exception('MAC, n3rgy or octopus keys are not provided')

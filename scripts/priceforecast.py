@@ -1,4 +1,4 @@
-from myutils.utils import getConnection, load_bmrs_data, cronlog, email_script
+from myutils.utils import getConnection, load_bmrs_data, cronlog, email_script, loadDataFromDb
 from myutils.keys import metkey
 
 
@@ -6,180 +6,151 @@ cronlog()
 import pandas as pd
 import numpy as np
 import requests
+import pickle
 from io import StringIO
 import datetime
 import traceback
 
 errstr = ''
+
+
+# Solar
 try:
-    t = datetime.datetime.today()
+    url = 'https://api.nationalgrideso.com/api/3/action/datastore_search?resource_id=db6c038f-98af-4570-ab60-24d71ebd0ae5&limit=500'
+    r = requests.get(url)
+    df = pd.DataFrame(r.json()['result']['records'])[['DATE_GMT','TIME_GMT','EMBEDDED_SOLAR_FORECAST']]
+    df.index = pd.DatetimeIndex(df.DATE_GMT.str[:11] + df.TIME_GMT) - pd.offsets.Minute(30)
+    df.drop(columns=["DATE_GMT","TIME_GMT"], inplace=True)
+    df = df.resample("1H").mean()
+    df['forecast_for'] = df.index.strftime('%Y-%m-%dT%H:%M')
+    df['forecast_at'] = pd.Timestamp.utcnow().strftime('%Y-%m-%dT%H:%M')
+    df = df.reset_index(drop=True).rename(columns={'EMBEDDED_SOLAR_FORECAST':'forecast'})
 
-    # This section works out maximum solar for each hour
-    datalist = []
-    for d in range(14):
-        kwargs = {'report': 'B1630'} 
-        kwargs['dates'] = ("SettlementDate=" + 
-                        (t-pd.offsets.Day(d+1)).strftime('%Y-%m-%d') + 
-                        '&Period=*&')
-        r = load_bmrs_data(**kwargs)
-        data = pd.read_csv(StringIO(r), 
-                        header=None, 
-                        skiprows=5)
-        try:
-            data = data[data[2]=='Solar']
-        except Exception as e:
-            raise Exception(r)
+    s = """
+    INSERT INTO forecast_solar (forecast_for, forecast_at, forecast)
+    VALUES """
+    for i, j in df.iterrows():
+        s += "('{}', '{}', {}),".format(j.forecast_for, j.forecast_at, j.forecast)
+    s = s[:-1] + ';'
 
-        datalist.append(data[[3,4,5]])
-        
-    data = pd.concat(datalist)
-    data[4] = ((data[4]-1)/2).astype(int)
-    data.rename(columns={3: 'date', 4: 'time', 5: 'solar'}, inplace=True)
-    data['date'] = (data['date'].str[:4] + data['date'].str[5:7] + 
-                    data['date'].str[8:]).astype(int)
-    fullsolar = data.groupby(['time']).max()['solar']
-
-
-
-    # This section calculates gross demand (demand + solar) for the last 7 days
-    kwargs['report'] = 'FORDAYDEM'
-    kwargs['dates'] = ('FromDate=' + (t-pd.offsets.Day(7)).strftime('%Y-%m-%d') +
-                    '&ToDate=' + (t-pd.offsets.Day(1)).strftime('%Y-%m-%d') + 
-                    '&')
-    r = load_bmrs_data(**kwargs)
-    data = pd.read_csv(StringIO(r), header=None, skiprows=1)
-    data = data[data[0]=='DANF']
-    data[6] = ((data[2]-1)/2).astype(int)
-    data.rename(columns={1: 'date', 6: 'time', 5: 'demand'}, inplace=True)
-    demand = data[['date','time','demand']].groupby(['date','time']).mean()
-
-    datalist = []
-    for d in range(7):
-        kwargs['dates'] = ("SettlementDate=" + 
-                        (t-pd.offsets.Day(d+1)).strftime('%Y-%m-%d') + 
-                        '&Period=*&')
-        kwargs['report'] = 'B1630'
-        r = load_bmrs_data(**kwargs)
-        data = pd.read_csv(StringIO(r), 
-                        header=None, 
-                        skiprows=5)
-        data = data[data[2]=='Solar']
-        datalist.append(data[[3,4,5]])
-        
-    data = pd.concat(datalist)
-    data[4] = ((data[4]-1)/2).astype(int)
-
-    data.rename(columns={3: 'date', 4: 'time', 5: 'solar'}, inplace=True)
-    data['date'] = (data['date'].str[:4] + data['date'].str[5:7] + 
-                    data['date'].str[8:]).astype(int)
-    solar = data.groupby(['date', 'time']).mean()
-
-    demand = pd.concat([demand, solar], axis=1)
-    demand.reset_index(inplace=True)
-    demand['grossdemand'] = demand['demand']+demand['solar']
-    demand.interpolate(inplace=True)
-    demand = demand[demand.time<24]
-
-
-    # Gets wind forecasts
-    dates = ('FromDate=' + t.strftime('%Y-%m-%d') + '&ToDate=' +
-                (t+pd.offsets.Day(4)).strftime('%Y-%m-%d') + '&')
-    kwargs = {'report': 'WINDFORFUELHH', 
-            'dates': dates} 
-    r = load_bmrs_data(**kwargs)
-    data = pd.read_csv(StringIO(r), header=None, skiprows=1)
-    data = data[data[5].isnull()==0]
-    data1 = data[[1,2,6]].copy()
-    data1.columns = ['date','time','peakMW']
-    data1.loc[:,'time'] = (data1.loc[:,'time'].values-1)/2
-
-    kwargs['dates'] = ""
-    kwargs['report'] = 'FOU2T14D'
-    r = load_bmrs_data(**kwargs)
-    data = pd.read_csv(StringIO(r), header=None, skiprows=1)
-    data = data[data[1]=='WIND']
-    data2 = data.loc[:,4:].copy()
-    data2.reset_index(drop=True, inplace=True)
-    data2.columns=['date','peakMW']
-    data2['time']=-1
-
-    for i in range(1,len(data2)-1):
-        x = data2.peakMW.values[(i-1):(i+2)]
-        if x[1]<=max(x[0], x[2]):
-            if x[0]>x[2]:
-                t = 0
-            elif x[0]<x[2]:
-                t = 23
-            else:
-                t = 11
-        else:
-            t = round(23*(x[1]-x[0])/(2*x[1]-x[0]-x[2]))
-        data2.loc[i,'time'] = t        
-    i = len(data2)-1
-    x = data2.peakMW.values[(i-1):]
-    data2.loc[i,'time'] = 0
-    data2.loc[i,'peakMW'] = min(x)
-        
-    data = pd.concat([data1, data2.iloc[1:]], ignore_index=True, sort=False)
-    data = data[data['time']<24]
-    temp = data['date'].astype(str) + 'T' + data['time'].astype(str)
-    temp = [datetime.datetime.strptime(x, '%Y%m%d.0T%H.0') for x in temp.values]
-    data = pd.Series(data.peakMW.values, index=temp)
-
-    idx = pd.date_range(start=data.index[0], end=data.index[-1], freq='H')
-    d2 = data[idx].interpolate()
-    d2 = d2.iloc[24:8*24]
-
-    data= pd.DataFrame(index=d2.index)
-    demand = np.hstack([demand.grossdemand.values[-144:],demand.grossdemand.values[:24]])
-
-    data['grossdemand'] = demand
-    data['wind'] = d2.values
-    data['fullsolar'] = fullsolar[:24].values.tolist()*7
-
-
-
-
-    resource = 'val/wxfcs/all/json/3772/?res=daily&'
-    meturl = 'http://datapoint.metoffice.gov.uk/public/data/{}key={}'
-
-    r = requests.get(meturl.format(resource, metkey))
-
-
-    days = r.json()['SiteRep']['DV']['Location']['Period']
-    UVs = [float(x['Rep'][0]['U']) for x in days]
-    UVs = UVs + UVs[-1:]*2
-    UVs = [[x/7.0]*24 for x in UVs]
-    UVs = np.array(UVs).reshape(-1)
-    data['solar'] = data['fullsolar']*UVs
-    data['demand'] = data.grossdemand-data.solar
-    data['netdemand'] = data.demand-data.wind
-
+    #print(s)
     conn, cur = getConnection()
-    s = 'select slope, intercept from price_function order by date desc, created_on desc limit 1;'
     cur.execute(s)
-    slope, intercept = cur.fetchone()
-
-    data['price'] = np.log(data.netdemand.values)*slope+intercept
+    conn.commit()
 
 
-    if True:
-        timestamp = datetime.datetime.now().isoformat()[:16]
-        s = """
-        INSERT INTO price_forecast (datetime, demand, solar, wind, price, created_on)
-        VALUES """
-        for i, j in data.iterrows():
-            s += "('{}', {}, {}, {}, {}, '{}'),".format(i, j.grossdemand, j.solar, j.wind, j.price, timestamp)
-        s = s[:-1] + ';'
-
-        #print(s)
-        cur.execute(s)
-        conn.commit()
-
-    conn.close()
 except Exception as err:  
     errstr +=  str(err) 
     errstr += traceback.format_exc() + '\n'
+
+
+
+# Wind
+try:
+    url = 'https://api.nationalgrideso.com/api/3/action/datastore_search?resource_id=93c3048e-1dab-4057-a2a9-417540583929&limit=500'
+    r = requests.get(url)
+    df = pd.DataFrame(r.json()['result']['records'])[['Datetime','Wind_Forecast']]
+    df.index = pd.DatetimeIndex(df.Datetime)-pd.offsets.Minute(30)
+    df.drop(columns=["Datetime"], inplace=True)
+    df = df.resample('1H').mean()
+    df['forecast_for'] = df.index.strftime('%Y-%m-%dT%H:%M')
+    df['forecast_at'] = pd.Timestamp.utcnow().strftime('%Y-%m-%dT%H:%M')
+    df = df.reset_index(drop=True).rename(columns={'Wind_Forecast':'forecast'})
+
+    s = """
+    INSERT INTO forecast_wind (forecast_for, forecast_at, forecast)
+    VALUES """
+    for i, j in df.iterrows():
+        s += "('{}', '{}', {}),".format(j.forecast_for, j.forecast_at, j.forecast)
+    s = s[:-1] + ';'
+
+    #print(s)
+    conn, cur = getConnection()
+    cur.execute(s)
+    conn.commit()
+
+
+except Exception as err:  
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
+
+
+
+
+# Demand
+try:
+    url = 'https://api.nationalgrideso.com/api/3/action/datastore_search?resource_id=7c0411cd-2714-4bb5-a408-adb065edf34d&limit=500'
+    r = requests.get(url)
+    df = pd.DataFrame(r.json()['result']['records'])[['GDATETIME','NATIONALDEMAND']]
+    df.index = pd.DatetimeIndex(df.GDATETIME)-pd.offsets.Minute(30)
+    df.drop(columns=['GDATETIME'], inplace=True)
+    df = df.resample("1H").mean()
+    df['forecast_for'] = df.index.strftime("%Y-%m-%dT%H:%M")
+    df['forecast_at'] = pd.Timestamp.utcnow().strftime("%Y-%m-%dT%H:%M")
+    df = df.reset_index(drop=True).rename(columns=dict(NATIONALDEMAND="forecast"))
+
+    s = """
+    INSERT INTO forecast_demand (forecast_for, forecast_at, forecast)
+    VALUES """
+    for i, j in df.iterrows():
+        s += "('{}', '{}', {}),".format(j.forecast_for, j.forecast_at, j.forecast)
+    s = s[:-1] + ';'
+
+    #print(s)
+    conn, cur = getConnection()
+    cur.execute(s)
+    conn.commit()
+
+
+except Exception as err:  
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
+
+
+try:
+    before =  pd.Timestamp.now().isoformat()
+
+    s = f'''
+    with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_demand 
+    where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+    group by forecast_for order by 1 limit 168)
+    , d as (select d1.forecast_for, d1.forecast_at as demand_at, forecast_demand.forecast as demand
+    from d1 inner join forecast_demand on d1.forecast_for=forecast_demand.forecast_for and d1.forecast_at=forecast_demand.forecast_at)
+    select * from d 
+    '''
+    data_d = loadDataFromDb(s, returndf=True)
+    s = f'''
+    with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_wind 
+    where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+    group by forecast_for order by 1 limit 168)
+    , w as (select d1.forecast_for, d1.forecast_at as wind_at, forecast_wind.forecast as wind
+    from d1 inner join forecast_wind on d1.forecast_for=forecast_wind.forecast_for and d1.forecast_at=forecast_wind.forecast_at)
+    
+    select * from w 
+    '''
+    data_w = loadDataFromDb(s, returndf=True)
+    s = f'''
+    with d1 as (select forecast_for, max(forecast_at) as forecast_at from forecast_solar
+    where forecast_for>=date_trunc('day', TIMESTAMP '{before}') and forecast_at<'{before}'
+    group by forecast_for order by 1 limit 168)
+    , s as (select d1.forecast_for, d1.forecast_at as solar_at, forecast_solar.forecast as solar
+    from d1 inner join forecast_solar on d1.forecast_for=forecast_solar.forecast_for and d1.forecast_at=forecast_solar.forecast_at)
+
+    select * from s 
+    '''
+    data_s = loadDataFromDb(s, returndf=True)
+    d = pd.concat([x.set_index('forecast_for') for x in [data_d, data_w, data_s]], axis=1)
+    d = d.iloc[:168]
+    d['solar'] = d.solar.fillna(0)
+    d['demand'] = d.demand + d.solar      
+    d['created_on'] = max(d.demand_at.max(), d.solar_at.max(), d.wind_at.max())
+    data = d.reset_index().rename(columns={'forecast_for': 'datetime'})
+    with open("//home/django/django_project/forecasts/cache.pkl", "wb") as writer:
+        pickle.dump(data, writer)
+except Exception as err:  
+    errstr +=  str(err) 
+    errstr += traceback.format_exc() + '\n'
+
 
 email_script(errstr, 'priceforecast.py', 1)
 if len(errstr):

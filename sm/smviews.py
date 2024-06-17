@@ -18,6 +18,7 @@ def robots_txt(request):
     return HttpResponse("\n".join(lines), content_type="text/plain")
 
 def inner(request, choice):
+    #return HttpResponse("Under maintenance - please try again tomorrow")
     if choice == 'home':
         output = homepage(request)
     elif choice in ['gastracker','electracker']:
@@ -27,10 +28,12 @@ def inner(request, choice):
     elif choice == 'getstarting':
         output = gettingStartedPage(request)
     elif choice == 'checks':
+        return HttpResponse("Under maintenance - please try again tomorrow")
         output = checksPage(request)
     elif choice == 'logpage':
         output = logPage(request)
     elif choice =='admin':
+        #return HttpResponse("Under maintenance - please try again tomorrow")
         output = adminPage( request)
     elif choice in ['consumption','gasconsumption','export']:
         output = consumptionPage(request, choice)
@@ -52,6 +55,7 @@ def inner(request, choice):
         from .smtest import memoryPage
         output = memoryPage(request)
     elif choice in ['octobill']:
+        return HttpResponse("Under maintenance - please try again tomorrow")
         from .smtest import octobillPage
         output = octobillPage(request)
     elif choice in ['octoaccount']:
@@ -94,7 +98,8 @@ def runsql(request):
         return HttpResponse(errstr)
 
 def bot_to_reject(request):
-    bots = ['SemrushBot', 'AhrefsBot']
+    bots = ['SemrushBot', 'AhrefsBot', 'PetalBot', 'Bot']
+    bots = ['Bot', 'externalhit', 'Bytespider']
     for bot in bots:
         if bot in request.META.get('HTTP_USER_AGENT',''):
             return True

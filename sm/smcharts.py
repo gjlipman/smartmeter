@@ -168,6 +168,8 @@ def consumptionPage(request, choice):
     ''' 
 
     data = loadDataFromDb(s, returndf=True)
+    if 'debug' in request.GET:
+        raise Exception(s)
     url = request.get_full_path()
     type = ['electricity consumption','gas consumption','electricity export'][type_id]
     

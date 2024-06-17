@@ -44,8 +44,13 @@ def checkRequest(request):
             u = adj_url(url, [], [('tariff', '15')])
             return redirect(u)
 
-    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage','gastracker', 'electracker', 'other','memory','octobill','octoaccount','customprofile']:
+    if choice in ['home', 'admin', 'info', 'getstarting', 'checks', 'logpage', 'other','memory','octobill','octoaccount','customprofile']:
         return choice
+
+    if choice in ['gastracker', 'electracker']:
+        content = """
+        <P>This functionality is not currently supported. Please try another page from the menu.</P>"""
+        return create_sm_page(request, content, 'Invalid Page')       
 
     type_id, type_label = get_type_id(choice)   
 
@@ -76,6 +81,8 @@ def checkRequest(request):
             if (isfixed==0):
                 if 'region' not in request.GET:
                     return getTariff(request, choice) 
+                if tariff == 'SILVER-2017-1':
+                    return getTariff(request, choice)
                 region = request.GET.get('region')
                 s = f"select var_id, granularity_id from sm_variables where product='{tariff}' and region='{region}' and type_id={type_id}"
                 s = loadDataFromDb(s)  
@@ -271,7 +278,7 @@ def adminPage(request):
             <P>If you have registered with n3rgy, you will have registered using your MAC, which is a unique 16 digit string
             printed on your in-house display (something like B816B327CE29A3C1 - don't include any hyphens or spaces). 
             If you have not yet registered with n3rgy, you can do for free by going to 
-            <A HREF="https://data.n3rgy.com/home" target="_blank">their website</A> and clicking on the "I'm a Consumer" button 
+            <A HREF="https://www.n3rgy.com/" target="_blank">their website</A> and clicking on the "I'm a Consumer" button 
             in the top right corner. </P>
             <P>Your n3rgy key will never be stored by the website. You may later choose to store consumption data, however you will be 
             given further details before you do.</P>
@@ -369,46 +376,71 @@ def adminPage(request):
 
         if source=='Octopus':
             key = request.GET.get('octopus')
-            if request.GET.get('includeprice','0')=='1':
-                df = octopusmeters(key, getprices=True)
-            else:
-                df = octopusmeters(key, getprices=False)
-            s += '<H4>Data Available from Octopus</H4>'
-            if isinstance(df, tuple):
-                s += '<P><B>Invalid key</B>. Your key should be the combination of your account number and your security key, with no characters in between. '
-                if df[0]==404:
-                    s += f'The Octopus API responded that it could not recognise account number {key[:10]}. '
-                    s += 'This should be your account number, eg A-ABCD1234. You can find it on your bill or your Octopus webpage. '
-                elif df[0]==401:
-                    s += f'The Octopus API responded with a security error. This may mean that your security key {key[10:]} was wrong. '
-                    s += 'You should be able to find it on the <A HREF="https://octopus.energy/dashboard/developer/" target="_blank">developer page</A> of the Octopus website. '
-                    s += f'Alternatively, it may be that this is merely the wrong security key for the account {key[:10]}. ' 
-                else:
-                    s += f'Unknown error connecting to your account: {df[1]}. ' 
-            elif df.shape[0]==0:
-                s += f'''
-                    <P><B>We connected to your Octopus account, but couldn't find any meters with consumption data</B>. You can see the full information Octopus has for your meters on <A HREF="{url.replace('admin','octoaccount')}">Octopus Account Details</A>. Feel free to get in touch with 
-                    me so I can investigate. 
-                    '''
-            else:
-
+            check_before = request.GET.get('checkbefore', '0')
+            if check_before == '1':
+                include_old = ('include_old' in request.GET)
                 if request.GET.get('includeprice','0')=='1':
-                    s += '<TABLE><TR><TH>Type</TH><TH>MPAN</TH><TH>Meter</TH><TH>Last Time (UTC)</TH><TH>Tariff</TH><TH>Product</TH><TH>Region</TH><TH>Price</TH></TR>'
-                    for i, j in df.iterrows():
-                        s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD><TD>{j['product']}</TD><TD>{j.region}</TD><TD>{j['prices']}</TD></TR>"
-                    s += '</TABLE>'
+                    raise Exception("includeprice flag no longer handled")
+                    #df = octopusmeters(key, getprices=True, include_old=include_old, gql=False)
                 else:
-                    s += '<TABLE><TR><TH>Type</TH><TH>MPAN</TH><TH>Meter</TH><TH>Last Time (UTC)</TH><TH>Tariff</TH><TH>Product</TH><TH>Region</TH></TR>'
-                    for i, j in df.iterrows():
-                        s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD>"
-                        if len(j.tariff):
-                            s += f"<TD>{j.tariff[5:-2]}</TD><TD>{j.tariff[-1]}</TD></TR>"
-                        else:
-                            s += f"<TD></TD><TD></TD></TR>"
-                    s += '</TABLE>'                    
+                    if request.GET.get('gqlaccounts', '0') == '1':
+                        df = octopusmeters(key, getprices=False, include_old=include_old, gql=True)
+                    else:
+                        df = octopusmeters(key, getprices=False, include_old=include_old, gql=False)
+                s += '<H4>Data Available from Octopus</H4>'
+                if isinstance(df, tuple):
+                    s += '<P><B>Cannot retrieve data.</B> It may be that you misentered your account details. You should enter the combination of your account number and your security key, with no characters in between. '
+                    if df[0]==404:
+                        s += f'The Octopus API responded that it could not recognise account number {key[:10]}. '
+                        s += 'This should be your account number, eg A-ABCD1234. You can find it on your bill or your Octopus webpage. '
+                    elif df[0]==401:
+                        s += f'The Octopus API responded with a security error. This may mean that your security key {key[10:]} was wrong. '
+                        s += 'You should be able to find it on the <A HREF="https://octopus.energy/dashboard/developer/" target="_blank">developer page</A> of the Octopus website. '
+                        s += f'Alternatively, it may be that this is merely the wrong security key for the account {key[:10]}. ' 
+                    else:
+                        s += f'Unknown error connecting to your account: {df[1]}. ' 
+                elif df.shape[0]==0:
+                    s += f'''
+                        <P><B>We connected to your Octopus account, but couldn't find any meters with consumption data</B>. You can see the full information Octopus has for your meters on <A HREF="{url.replace('admin','octoaccount')}">Octopus Account Details</A>. Feel free to get in touch with 
+                        me so I can investigate. 
+                        '''
+                else:
 
-                s += f'''<P>You can see the full information Octopus has for your meters on <A HREF="{url.replace('admin','octoaccount')}">Octopus Account Details</A>. Please let me know if you have additional meters that you think I should be picking up.</P> '''
+                    if request.GET.get('includeprice','0')=='1':
+                        s += '<TABLE><TR><TH>Type</TH><TH>MPAN</TH><TH>Meter</TH><TH>Last Time (UTC)</TH><TH>Tariff</TH><TH>Product</TH><TH>Region</TH><TH>Price</TH></TR>'
+                        for i, j in df.iterrows():
+                            s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD><TD>{j['product']}</TD><TD>{j.region}</TD><TD>{j['prices']}</TD></TR>"
+                        s += '</TABLE>'
+                    else:
+                        s += '<TABLE><TR><TH>Type</TH><TH>MPAN</TH><TH>Meter</TH><TH>Last Time (UTC)</TH><TH>Tariff</TH><TH>Product</TH><TH>Region</TH></TR>'
+                        for i, j in df.iterrows():
+                            s += f"<TR><TD>{types[j.type_id]}</TD><TD>{j.mpan}</TD><TD>{j.serial}</TD><TD>{j.laststart}</TD><TD>{j.tariff}</TD>"
+                            if len(j.tariff):
+                                s += f"<TD>{j.tariff[5:-2]}</TD><TD>{j.tariff[-1]}</TD></TR>"
+                            else:
+                                s += f"<TD></TD><TD></TD></TR>"
+                        s += '</TABLE>'                    
 
+                    s += f'''<P>You can see the full information Octopus has for your meters on <A HREF="{url.replace('admin','octoaccount')}">Octopus Account Details</A>. Please let me know if you have additional meters that you think I should be picking up.</P> '''
+
+                    s += '''
+                            <P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates
+                            that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
+                            other information that could be used to identify you. Your data will be deleted automatically within 7 days of you last 
+                            loading data, and you can delete it manually at any time on this page.
+                            <P>Note that at the moment each of these buttons will take about 10 seconds to load in the data. I will be working on optimising 
+                            this over the coming days. </P>
+                            <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''
+                    s += f'''action="{url}" method="post" >'''
+                    j = []  
+                    if 0 in df.type_id.unique():
+                        j.append('''<input type="submit" name="loadelectricity" value="Load Electricity Data"  onclick="this.value='Loading...';">''') 
+                    if 1 in df.type_id.unique():
+                        j.append('''<input type="submit" name="loadgas" value="Load Gas Data" onclick="this.value='Loading...';">''')
+                    if 2 in df.type_id.unique():
+                        j.append('''<input type="submit" name="loadexport" value="Load Export Data" onclick="this.value='Loading...';">''')
+                    s += '&nbsp;&nbsp;&nbsp;'.join(j) + '</form><BR>'
+            else:
                 s += '''
                         <P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates
                         that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
@@ -419,65 +451,80 @@ def adminPage(request):
                         <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''
                 s += f'''action="{url}" method="post" >'''
                 j = []  
-                if 0 in df.type_id.unique():
-                    j.append('''<input type="submit" name="loadelectricity" value="Load Electricity Data"  onclick="this.value='Loading...';">''') 
-                if 1 in df.type_id.unique():
-                    j.append('''<input type="submit" name="loadgas" value="Load Gas Data" onclick="this.value='Loading...';">''')
-                if 2 in df.type_id.unique():
-                    j.append('''<input type="submit" name="loadexport" value="Load Export Data" onclick="this.value='Loading...';">''')
+                j.append('''<input type="submit" name="loadelectricity" value="Load Electricity Data"  onclick="this.value='Loading...';">''') 
+                j.append('''<input type="submit" name="loadgas" value="Load Gas Data" onclick="this.value='Loading...';">''')
+                j.append('''<input type="submit" name="loadexport" value="Load Export Data" onclick="this.value='Loading...';">''')
                 s += '&nbsp;&nbsp;&nbsp;'.join(j) + '</form><BR>'
-  
+        
         if source == 'n3rgy':
             key = request.GET.get('n3rgy')
             n3adj = int(request.GET.get('n3adj','1'))
-            ndata = n3rgymeters(key, n3adj)
-            
-            s += '<H4>Data Available from n3rgy</H4>'
-            if isinstance(ndata, tuple):
-                s += "<P><B>Invalid key</B>. Your key should be the in-home display's MAC code that you used to set up your n3rgy account."
-                s += " it should be 16 digits without any spaces or dashes in between the characters. "
-                s += f"Error code: {ndata[0]}, message: {ndata[1]}"
-            else:
-                found = [x[0] for x in ndata if x[1]==200]
-                numvalid = len(found)
-                if numvalid==0:
-                    s += "<P><B>We connected to your n3rgy account. but couldn't find any meters with data</B>.</P> "
+            check_before = request.GET.get('checkbefore', '0')
+            if check_before == '1':
+                ndata = n3rgymeters(key, n3adj)
                 
-                if numvalid>0:
-                    s += '<P>We connected to your n3rgy account, and the following data types were found:</P>'
-                    s += '<TABLE><TR><TH>Type</TH><TH>LastDateTime (UTC)</TH></TR>'    
-                    for i in range(3):
-                        if ndata[i][1]==200:
-                            s += f"<TR><TD>{types[i]}</TD><TD>{ndata[i][2]}</TD></TR>"
-                    s += '</TABLE>'
-
-                if numvalid<3 and False:
-                    s += "<P>We had problems accessing the following data types.</P> "
-                    s += '<TABLE><TR><TH>Type</TH><TH>Status</TH><TH>Message</TH></TR>'
+                s += '<H4>Data Available from n3rgy</H4>'
+                if isinstance(ndata, tuple):
+                    s += "<P><B>Invalid key</B>. Your key should be the in-home display's MAC code that you used to set up your n3rgy account."
+                    s += " it should be 16 digits without any spaces or dashes in between the characters. "
+                    s += f"Error code: {ndata[0]}, message: {ndata[1]}"
+                else:
+                    found = [x[0] for x in ndata if x[1]==200]
+                    numvalid = len(found)
+                    if numvalid==0:
+                        s += "<P><B>We connected to your n3rgy account. but couldn't find any meters with data</B>.</P> "
                     
-                    for i in range(3):
-                        if ndata[i][1]!=200:
-                            s += f"<TR><TD>{types[i]}</TD><TD>{ndata[i][1]}</TD><TD>{ndata[i][2]}</TD></TR>"
-                    s += '</TABLE><BR>'
+                    if numvalid>0:
+                        s += '<P>We connected to your n3rgy account, and the following data types were found:</P>'
+                        s += '<TABLE><TR><TH>Type</TH><TH>LastDateTime (UTC)</TH></TR>'    
+                        for i in range(3):
+                            if ndata[i][1]==200:
+                                s += f"<TR><TD>{types[i]}</TD><TD>{ndata[i][2]}</TD></TR>"
+                        s += '</TABLE>'
 
-                if numvalid>0:   
-                    s += '''<P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates 
-                            that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
-                            other information that could be used to identify you. Your data will be deleted automatically within 7 days of you last 
-                            loading data, and you can delete it manually at any time on this page.
-                            <P>Note that at the moment each of these buttons will take about 10 seconds to load in the data. I will be working on optimising 
-                            this over the coming days. </P>
-                            <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''
-                    s += f'''action="{url}" method="post" >'''
-                    j = []  
-                    if 0 in found:
-                        j.append('''<input type="submit" name="loadelectricity" value="Load Electricity Data" onclick="this.value='Loading...';">''') 
-                    if 1 in found:
-                        j.append('''<input type="submit" name="loadgas" value="Load Gas Data" onclick="this.value='Loading...';">''')
-                    if 2 in found:
-                        j.append('''<input type="submit" name="loadexport" value="Load Export Data" onclick="this.value='Loading...';">''')
-                    s += '&nbsp;&nbsp;&nbsp;'.join(j) + '</form><BR><BR>'
-   
+                    if numvalid<3 and False:
+                        s += "<P>We had problems accessing the following data types.</P> "
+                        s += '<TABLE><TR><TH>Type</TH><TH>Status</TH><TH>Message</TH></TR>'
+                        
+                        for i in range(3):
+                            if ndata[i][1]!=200:
+                                s += f"<TR><TD>{types[i]}</TD><TD>{ndata[i][1]}</TD><TD>{ndata[i][2]}</TD></TR>"
+                        s += '</TABLE><BR>'
+
+                    if numvalid>0:   
+                        s += '''<P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates 
+                                that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
+                                other information that could be used to identify you. Your data will be deleted automatically within 7 days of you last 
+                                loading data, and you can delete it manually at any time on this page.
+                                <P>Note that at the moment each of these buttons will take about 10 seconds to load in the data. I will be working on optimising 
+                                this over the coming days. </P>
+                                <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''
+                        s += f'''action="{url}" method="post" >'''
+                        j = []  
+                        if 0 in found:
+                            j.append('''<input type="submit" name="loadelectricity" value="Load Electricity Data" onclick="this.value='Loading...';">''') 
+                        if 1 in found:
+                            j.append('''<input type="submit" name="loadgas" value="Load Gas Data" onclick="this.value='Loading...';">''')
+                        if 2 in found:
+                            j.append('''<input type="submit" name="loadexport" value="Load Export Data" onclick="this.value='Loading...';">''')
+                        s += '&nbsp;&nbsp;&nbsp;'.join(j) + '</form><BR><BR>'
+            else:
+                s += '''<P>You can load the latest data to the server using the buttons below. <B>Clicking this button indicates 
+                        that you are happy for your data to be stored on the server</B>. Your security key will not be stored, nor will any 
+                        other information that could be used to identify you. Your data will be deleted automatically within 7 days of you last 
+                        loading data, and you can delete it manually at any time on this page.
+                        <P>Note that at the moment each of these buttons will take about 10 seconds to load in the data. I will be working on optimising 
+                        this over the coming days. </P>
+                        <form onsubmit="if( _formConfirm_submitted == false ){ _formConfirm_submitted = true;return true }else{ return false;  }" '''
+                s += f'''action="{url}" method="post" >'''
+                j = []  
+                j.append('''<input type="submit" name="loadelectricity" value="Load Electricity Data" onclick="this.value='Loading...';">''') 
+
+                j.append('''<input type="submit" name="loadgas" value="Load Gas Data" onclick="this.value='Loading...';">''')
+
+                j.append('''<input type="submit" name="loadexport" value="Load Export Data" onclick="this.value='Loading...';">''')
+                s += '&nbsp;&nbsp;&nbsp;'.join(j) + '</form><BR><BR>'
+
         if df_gaps.shape[0]>0:
             if request.GET.get('hidegaps','0')=='0':
                 df_gaps['type'] = df_gaps.type_id.map({0: 'Electricity', 1: 'Gas', 2:'Electricity Export'})
@@ -525,7 +572,7 @@ def moreinfo(request):
             <A HREF="https://octopus.energy/dashboard/" target="_blank">main dashboard</A> when you log in) and your API key 
             (which is a 32 character string and can be found on their <A HREF="https://octopus.energy/dashboard/developer/" target="blank">developer dashboard</A>).
             If you aren't with Octopus (or even if you are), you can register for a free consumer account with n3rgy by going to their 
-            <A HREF="https://data.n3rgy.com/home" target="_blank">main website</A> and clicking on the "I'm a Consumer button in the top right corner. 
+            <A HREF="https://www.n3rgy.com/" target="_blank">main website</A> and clicking on the "I'm a Consumer button in the top right corner. 
             In order to authenticate that you have the right to access your account information, you will need to provide n3rgy with 
             your electricity MPAN (which can be found on your latest bill), the MAC code of your in-house display (a 16 character string - leave out the hyphens), and 
             roughly when you moved into your home. Once you are registered with n3rgy, you will be able to access your data using your MAC code. 
@@ -560,7 +607,7 @@ def moreinfo(request):
             
             <P>Over the past six months I had many conversations, with Octopus, with the <A HREF="https://serl.ac.uk/" target="_blank">Smart Energy Research Lab</A>, 
              <A HREF="https://www.hildebrand.co.uk/" target="blank">
-            Hildebrand Technology</A>, <A HREF="https://data.n3rgy.com/home" target="_blank">n3rgy</A>, 
+            Hildebrand Technology</A>, <A HREF="https://www.n3rgy.com/" target="_blank">n3rgy</A>, 
             Octopus, <A HREF="https://carbon.coop/" target="_blank">
             Carbon Coop</A> as well as with many smart meter users. 
             I wrote a <A HREF="https://medium.com/@guylipman/letting-people-access-their-electricity-data-e3d36ad9b6c0" target="_blank">blog post</A>
@@ -617,7 +664,7 @@ def gettingStartedPage(request):
     <H4>Electricity Cost Data</H4>
     <P>Similarly to electricity consumption, you can see monthly cost since 2019, daily cost for a given month, and half hourly cost for a given day.</P>
     <P>In order to calculate the cost, we need to know your tariff. You can set a fixed tariff (&tariff=15) - this is interpreted as the tariff in p/kwh, 
-    including VAT, and excluding any standing charges. Alternatively, you can use a time-varying tariff like Octopus's AGILE-18-02-21 or GO-18-06-12 or SILVER-2017-1
+    including VAT, and excluding any standing charges. Alternatively, you can use a time-varying tariff like Octopus's AGILE-18-02-21, AGILE-FLEX-22-11-25 or GO-18-06-12
     (at the moment these are the only time-varying tariffs I've made available, but I will be adding more later). In order to use the 
     time-varying tariffs, you will also need to include your region code, eg C for London. So for me, I set &tariff=AGILE-18-02-21&amp;region=C. If you aren't sure
     what your region code is, you can find it on the Admin page, or if you leave it off you'll be presented with a list. </P>
